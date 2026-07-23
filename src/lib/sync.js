@@ -3,7 +3,7 @@
 const { config } = require('../config');
 const guesty = require('../lib/guesty');
 const webflow = require('../lib/webflow');
-const { slugify, stableHash, money, sleep } = require('../lib/util');
+const { slugify, stableHash, money, sleep, ymd } = require('../lib/util');
 
 /**
  * Guesty -> Webflow CMS sync.
@@ -28,7 +28,7 @@ const C = () => config.webflow.collections;
  * It is folded into the sync hash so a listing whose Guesty payload has not
  * changed is still rewritten with the new mapping.
  */
-const MAPPING_VERSION = 2;
+const MAPPING_VERSION = 3;
 
 function firstPicture(listing) {
   if (listing.picture?.large) return listing.picture.large;
@@ -185,11 +185,42 @@ function toPropertyCreateFields(listing, { destinationId, policyId } = {}) {
   };
 }
 
+/** How far ahead to look for the "from" price the cards advertise. */
+const FROM_PRICE_WINDOW_DAYS = 90;
+
+/**
+ * The lowest nightly rate a guest could actually book in the next 90 days.
+ *
+ * Guesty's `prices.basePrice` is what the CMS used to carry, but this account
+ * runs PriceOptimizer: the calendar holds the real, dynamically managed rates
+ * and basePrice is a default nobody is charged. Advertising it overstated some
+ * homes roughly threefold.
+ *
+ * Returns null if the calendar cannot be read, so the caller falls back rather
+ * than writing a zero over a working price.
+ */
+async function lowestNightlyRate(listingId) {
+  const from = new Date();
+  const to = new Date(Date.now() + FROM_PRICE_WINDOW_DAYS * 86400000);
+  try {
+    const days = await guesty.getCalendar(listingId, ymd(from), ymd(to));
+    const rates = days
+      // A blocked date's price is not on offer, so it must not set the "from".
+      .filter((d) => guesty.isDayAvailable(d))
+      .map((d) => Number(d.price))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    return rates.length ? Math.min(...rates) : null;
+  } catch (err) {
+    console.warn(`[sync] calendar price unavailable for ${listingId}: ${err.message}`);
+    return null;
+  }
+}
+
 /**
  * Fields refreshed on EVERY sync, even when editorial content is locked.
  * These are all operational: nothing here is copy a human would have written.
  */
-function toPropertyOperationalFields(listing, { destinationId, policyId } = {}) {
+function toPropertyOperationalFields(listing, { destinationId, policyId, fromPrice } = {}) {
   const prices = listing.prices || {};
   const terms = listing.terms || {};
   const addr = listing.address || {};
@@ -203,7 +234,14 @@ function toPropertyOperationalFields(listing, { destinationId, policyId } = {}) 
     // to round. Floor rather than round: understating is safer than promising a
     // bathroom that does not exist. The exact value lives on Property Sync.
     baths: Math.floor(Number(listing.bathrooms) || 0),
-    price: Math.round(Number(prices.basePrice) || 0),
+    // The lowest nightly rate the calendar actually holds, not
+    // `prices.basePrice`. This account runs PriceOptimizer, so basePrice is a
+    // vestigial default that no guest is ever charged: The Royal Crown carries
+    // 18016 there while its calendar for the next 90 days runs 5500–9749. The
+    // card renders this under a "Per Night" label, so it has to be a rate
+    // somebody could really book. Falls back to basePrice only if the calendar
+    // could not be read.
+    price: Math.round(Number(fromPrice) || Number(prices.basePrice) || 0),
     'cleaning-fee': Math.round(Number(prices.cleaningFee) || 0),
     currency: prices.currency || 'INR',
     'minimum-nights': Number(terms.minNights) || 1,
@@ -309,7 +347,11 @@ async function syncListings({ createMissingProperties = true, onlyListingIds = n
         Boolean(existingProperty?.fieldData?.['lock-editorial-content']) ||
         Boolean(existingSync?.fieldData?.['lock-editorial-content']);
 
-      const refs = { destinationId: destination?.id, policyId: policy?.id };
+      const refs = {
+        destinationId: destination?.id,
+        policyId: policy?.id,
+        fromPrice: await lowestNightlyRate(listing._id),
+      };
 
       // --- Properties (editorial) -----------------------------------------
       let propertyItemId = existingProperty?.id || null;
@@ -359,7 +401,9 @@ async function syncListings({ createMissingProperties = true, onlyListingIds = n
         if (!destinationMembers.has(destination.id)) destinationMembers.set(destination.id, []);
         destinationMembers.get(destination.id).push({
           propertyItemId,
-          price: Math.round(Number(listing.prices?.basePrice) || 0),
+          // Same calendar-derived rate the card shows, so a destination's
+          // "from" price agrees with the cheapest home listed under it.
+          price: Math.round(Number(refs.fromPrice) || Number(listing.prices?.basePrice) || 0),
         });
       }
 
@@ -425,18 +469,46 @@ const PUSHABLE = {
   'publicDescription.summary': (fd) => stripHtml(fd['about-home']),
 };
 
+/**
+ * Webflow item changed -> push the narrow editable set to Guesty.
+ *
+ * **This MUST no-op when nothing actually differs.** It used to push title and
+ * summary on every event regardless of whether they had changed, which closed a
+ * loop with the webhooks: a Webflow write fired `collection_item_changed`, this
+ * pushed to Guesty, Guesty fired `listing.updated`, that ran the Guesty ->
+ * Webflow sync, which wrote to Webflow and fired the next round. Observed live
+ * on 2026-07-23 running flat out until it exhausted Webflow's 60-a-minute
+ * budget — which also starved every other write, including the real sync.
+ *
+ * Comparing before writing breaks the cycle at its first hop: the second round
+ * finds Guesty already holding these values and stops.
+ */
 async function pushPropertyToGuesty(propertyItem) {
   const fd = propertyItem.fieldData || {};
   const listingId = fd['guesty-listing-id'];
   if (!listingId) return { skipped: 'no_listing_id' };
 
-  const patch = {};
   const title = PUSHABLE.title(fd);
   const summary = PUSHABLE['publicDescription.summary'](fd);
-  if (title) patch.title = title;
-  if (summary) patch.publicDescription = { summary };
+  if (!title && !summary) return { skipped: 'nothing_to_push' };
 
-  if (!Object.keys(patch).length) return { skipped: 'nothing_to_push' };
+  let current;
+  try {
+    current = await guesty.getListing(listingId);
+  } catch (err) {
+    // Cannot prove a difference, so do not write — a blind push is what caused
+    // the loop. The next scheduled sync will pick this up.
+    console.warn(`[sync] cannot read ${listingId} to compare before push: ${err.message}`);
+    return { skipped: 'compare_failed', listingId };
+  }
+
+  const patch = {};
+  if (title && title !== current.title) patch.title = title;
+  if (summary && summary !== (current.publicDescription || {}).summary) {
+    patch.publicDescription = { summary };
+  }
+
+  if (!Object.keys(patch).length) return { skipped: 'already_in_sync', listingId };
 
   await guesty.updateListing(listingId, patch);
   return { pushed: Object.keys(patch), listingId };

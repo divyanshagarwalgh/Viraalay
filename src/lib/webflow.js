@@ -19,6 +19,9 @@ function headers(extra = {}) {
   };
 }
 
+/** Webflow allows 60 requests a minute per token. */
+const RATE_LIMIT_RETRIES = 5;
+
 async function api(pathname, { method = 'GET', query, body, label } = {}) {
   const url = new URL(config.webflow.base + pathname);
   if (query) {
@@ -26,15 +29,34 @@ async function api(pathname, { method = 'GET', query, body, label } = {}) {
       if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
     }
   }
-  return fetchJson(
-    url.toString(),
-    {
-      method,
-      headers: headers(body ? { 'Content-Type': 'application/json' } : {}),
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    },
-    { label: label || `Webflow ${method} ${pathname}` }
-  );
+
+  // A 429 here is not a failure, it is back-pressure — but nothing was waiting
+  // on it, so a long sync would blow the minute budget and drop whole listings
+  // on the floor. A full run once reported eleven "Too Many Requests" errors
+  // and left the CMS half-updated. Back off and carry on instead.
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await fetchJson(
+        url.toString(),
+        {
+          method,
+          headers: headers(body ? { 'Content-Type': 'application/json' } : {}),
+          ...(body ? { body: JSON.stringify(body) } : {}),
+        },
+        { label: label || `Webflow ${method} ${pathname}` }
+      );
+    } catch (err) {
+      const rateLimited = err.status === 429 || /too_many_requests|Too Many Requests/i.test(err.message || '');
+      if (!rateLimited || attempt >= RATE_LIMIT_RETRIES) throw err;
+
+      // 2s, 4s, 8s, 16s, 32s — the window is a minute, so this clears it.
+      const waitMs = 2000 * 2 ** attempt;
+      console.warn(
+        `[webflow] rate limited on ${label || pathname}, waiting ${waitMs / 1000}s (attempt ${attempt + 1}/${RATE_LIMIT_RETRIES})`
+      );
+      await sleep(waitMs);
+    }
+  }
 }
 
 /** Page through every item in a collection. */
