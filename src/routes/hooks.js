@@ -10,6 +10,45 @@ const { httpError } = require('../lib/util');
 const router = express.Router();
 const asyncRoute = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+/**
+ * A rate change in Guesty moves the "from" price the website advertises, so a
+ * calendar event does now have something to copy into the CMS — it did not
+ * until the card price started coming from the calendar rather than from
+ * Guesty's basePrice.
+ *
+ * Debounced hard, because calendar events arrive in bursts: re-pricing a season
+ * or importing a channel calendar can fire dozens per listing within a minute,
+ * and each sync is a Guesty read plus a Webflow write and publish. Firing one
+ * per event would put us straight back into the rate-limit exhaustion that took
+ * the CMS writes down earlier. One sync per listing per quiet period instead.
+ */
+const CALENDAR_DEBOUNCE_MS = 3 * 60 * 1000;
+const calendarTimers = new Map();
+
+function scheduleCalendarSync(listingId) {
+  if (!listingId) {
+    // Some calendar payloads cover many listings and name none. The six-hourly
+    // sweep is the backstop for those.
+    console.log('[hook:guesty] calendar event without a listing id, leaving it to the scheduled sync');
+    return;
+  }
+
+  clearTimeout(calendarTimers.get(listingId));
+  const timer = setTimeout(async () => {
+    calendarTimers.delete(listingId);
+    try {
+      const report = await sync.syncListings({ onlyListingIds: [listingId] });
+      console.log(`[hook:guesty] calendar re-sync ${listingId}`, JSON.stringify(report));
+    } catch (err) {
+      console.error(`[hook:guesty] calendar re-sync failed for ${listingId}: ${err.message}`);
+    }
+  }, CALENDAR_DEBOUNCE_MS);
+
+  if (timer.unref) timer.unref();
+  calendarTimers.set(listingId, timer);
+  console.log(`[hook:guesty] calendar change for ${listingId}, syncing in ${CALENDAR_DEBOUNCE_MS / 60000}m`);
+}
+
 function requireToken(req, expected, name) {
   const provided = req.query.token || req.get('x-webhook-token') || '';
   if (!expected) throw httpError(503, 'token_not_configured', `${name} is not configured`);
@@ -43,13 +82,14 @@ router.post(
 
     setImmediate(async () => {
       try {
-        if (/listing/i.test(event) && listingId) {
+        // Calendar first: the event is named `listing.calendar.updated`, so it
+        // also matches the plain /listing/ test below and would otherwise be
+        // handled — undebounced — by it.
+        if (/calendar/i.test(event)) {
+          scheduleCalendarSync(listingId);
+        } else if (/listing/i.test(event) && listingId) {
           const report = await sync.syncListings({ onlyListingIds: [listingId] });
           console.log(`[hook:guesty] ${event} ${listingId}`, JSON.stringify(report));
-        } else if (/calendar/i.test(event)) {
-          // Availability is read live at request time, so there is nothing to
-          // copy into the CMS. Logged for traceability only.
-          console.log(`[hook:guesty] calendar event for ${listingId || 'multiple listings'}`);
         } else if (/reservation/i.test(event)) {
           // The v2 payloads do not put the reservation where the legacy ones
           // did, so try the known shapes and fall back to naming the top-level
