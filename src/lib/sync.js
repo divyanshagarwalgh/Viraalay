@@ -225,6 +225,16 @@ function toPropertyOperationalFields(listing, { destinationId, policyId, fromPri
   const terms = listing.terms || {};
   const addr = listing.address || {};
 
+  // Guesty exposes coordinates on the address object; read both shapes
+  // defensively. The map page wants them in ONE field as "lat,lng" (human
+  // order) — the marker script swaps to [lng,lat] for MapLibre. A missing
+  // coordinate simply leaves the field blank so that marker is skipped, never
+  // an error (see the /map degrade-gracefully rule).
+  const lat = addr.lat ?? addr.location?.lat;
+  const lng = addr.lng ?? addr.location?.lng;
+  const mapCoordinates =
+    Number.isFinite(Number(lat)) && Number.isFinite(Number(lng)) ? `${lat},${lng}` : '';
+
   return {
     'guesty-listing-id': listing._id,
     guests: Number(listing.accommodates) || 0,
@@ -252,6 +262,10 @@ function toPropertyOperationalFields(listing, { destinationId, policyId, fromPri
     'check-out-time': clockTime(listing.defaultCheckOutTime),
     'instant-bookable': Boolean(listing.instantBookable ?? listing.isInstantBookable),
     'last-synced-from-guesty': new Date().toISOString(),
+    // Only write when we actually have coordinates — never blank an existing
+    // value, so the sync stays idempotent and a listing whose payload is briefly
+    // missing an address does not lose its marker.
+    ...(mapCoordinates ? { 'map-coordinates': mapCoordinates } : {}),
     ...(destinationId ? { destination: destinationId } : {}),
     ...(policyId ? { 'cancellation-policy-type': policyId } : {}),
   };

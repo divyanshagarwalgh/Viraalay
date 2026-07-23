@@ -113,6 +113,9 @@ app.use('/api/availability', rateLimit({ key: 'avail', max: 60, windowMs: 60_000
 app.use('/api/search', rateLimit({ key: 'search', max: 15, windowMs: 60_000 }));
 app.use('/api/checkout', rateLimit({ key: 'checkout', max: 10, windowMs: 60_000 }));
 app.use('/api/booking', rateLimit({ key: 'booking', max: 30, windowMs: 60_000 }));
+// Cached read for the /map markers; a modest cap is plenty since it is served
+// from a 5-minute cache.
+app.use('/api/properties-geo', rateLimit({ key: 'geo', max: 60, windowMs: 60_000 }));
 
 app.use('/api', apiRoutes);
 app.use('/api/payu', payuRoutes);

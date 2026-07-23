@@ -390,6 +390,89 @@ router.get(
 );
 
 /* -------------------------------------------------------------------------- */
+/* GET /api/properties-geo                                                     */
+/* -------------------------------------------------------------------------- */
+/**
+ * Everything the /map markers need, in one cached payload: coordinates plus the
+ * card fields (name, price, image, capacity, location).
+ *
+ * This is the CODE FALLBACK data source for the map page — it lets the map run
+ * without a native Finsweet Collection List, and is the future hook for live
+ * nightly rates (hydrate `price` from /api/search). Coordinates come from the
+ * CMS `Map Coordinates` field ("lat,lng"), falling back to the separate
+ * Latitude/Longitude fields the sync also maintains. A property with no valid
+ * coordinate is omitted (its marker is simply skipped), never an error. Cached
+ * five minutes, same as /api/properties-index, because a map page view hits it.
+ */
+let geoCache = { at: 0, data: null };
+
+function parseCoords(fieldData) {
+  const f = fieldData || {};
+  const combined = String(f['map-coordinates'] || '').trim();
+  let lat;
+  let lng;
+  if (combined.includes(',')) {
+    const [a, b] = combined.split(',');
+    lat = Number(a);
+    lng = Number(b);
+  } else {
+    lat = Number(f.latitude);
+    lng = Number(f.longitude);
+  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat === 0 && lng === 0) return null; // null island is not a real location
+  return { lat, lng };
+}
+
+router.get(
+  '/properties-geo',
+  asyncRoute(async (req, res) => {
+    const TTL = 5 * 60 * 1000;
+    if (geoCache.data && Date.now() - geoCache.at < TTL) {
+      res.set('Cache-Control', 'public, max-age=300');
+      return res.json(geoCache.data);
+    }
+
+    const webflow = require('../lib/webflow');
+    const items = await webflow.listAllItems(config.webflow.collections.properties);
+
+    const properties = items
+      .filter((i) => !i.isArchived && !i.isDraft)
+      .map((i) => {
+        const f = i.fieldData || {};
+        const coords = parseCoords(f);
+        if (!coords || !f.slug) return null;
+        const price = Number(f.price) || 0;
+        // A ₹0 item is a test/placeholder, not a bookable home — keep it off the map.
+        if (price <= 0) return null;
+        return {
+          itemId: i.id,
+          slug: f.slug,
+          name: f.name || 'Villa',
+          url: `/properties/${f.slug}`,
+          listingId: f['guesty-listing-id'] || null,
+          lat: coords.lat,
+          lng: coords.lng,
+          price,
+          image: f.thumbnail?.url || null,
+          guests: f.guests || null,
+          bedrooms: f.bedrooms || null,
+          bathrooms: f.baths || null,
+          location: f.location || f.city || '',
+          city: f.city || '',
+          rating: f['average-rating'] || null,
+        };
+      })
+      .filter(Boolean);
+
+    const data = { updatedAt: new Date().toISOString(), count: properties.length, properties };
+    geoCache = { at: Date.now(), data };
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json(data);
+  })
+);
+
+/* -------------------------------------------------------------------------- */
 /* GET /api/config                                                             */
 /* -------------------------------------------------------------------------- */
 /** Non-secret settings the front end needs to render correctly. */
