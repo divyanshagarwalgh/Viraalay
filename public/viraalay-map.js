@@ -141,7 +141,7 @@
       '.map_search{top:12px;left:12px;right:12px;width:auto}' +
       '.map_toggle{display:inline-flex;align-items:center;gap:7px;position:fixed;left:50%;transform:translateX(-50%);bottom:20px;z-index:1200;background:' + BRAND + ';color:#fff;border:none;padding:12px 26px;border-radius:999px;font:600 13px/1 system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;box-shadow:0 6px 18px rgba(0,0,0,.32);cursor:pointer;text-decoration:none;white-space:nowrap}' +
       '.map_component.is-map-view .map_sidebar{display:none}' +
-      '.map_component.is-map-view .map_canvas-wrap{display:block;position:fixed;left:0;right:0;bottom:0;top:4.25rem;z-index:900;height:auto}' +
+      '.map_component.is-map-view .map_canvas-wrap{display:block;position:fixed;left:0;right:0;bottom:0;top:var(--vmap-nav,4.25rem);z-index:900;height:auto}' +
       '}';
     document.head.appendChild(s);
   }
@@ -210,6 +210,24 @@
     var markers = {};
     var cards = {};
     var currentList = all;
+
+    // The site nav is position:fixed (74px, z-1000) and overlays the top of the
+    // page, so without this the map top, the top markers and the search field sit
+    // behind it. Offset the map section below the nav by its measured height (so
+    // it adapts to whatever the nav is at each breakpoint) and expose that height
+    // as --vmap-nav for the mobile full-screen map view.
+    function layout() {
+      var nav = document.querySelector('.navbar_component, .w-nav, [class*="navbar"]');
+      var navH = nav ? Math.round(nav.getBoundingClientRect().height) : 74;
+      var overlays = nav && /fixed|sticky|absolute/.test(getComputedStyle(nav).position);
+      document.documentElement.style.setProperty('--vmap-nav', navH + 'px');
+      var section = document.querySelector('.section_map');
+      var comp = document.querySelector('.map_component');
+      if (section) section.style.paddingTop = overlays ? navH + 'px' : '0px';
+      if (comp) comp.style.height = 'calc(100svh - ' + navH + 'px)';
+      if (map) map.resize();
+    }
+    layout();
 
     function setActive(slug) {
       Object.keys(markers).forEach(function (k) {
@@ -360,7 +378,7 @@
         }, 150);
       });
       window.addEventListener('resize', function () {
-        if (map) map.resize();
+        layout();
       });
     });
   }
