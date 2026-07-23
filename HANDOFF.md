@@ -356,6 +356,21 @@ that check never runs for them. **Any listener that needs to see calendar clicks
 must therefore use the capture phase** — that is why the auto-advance listener
 does.
 
+**A picker showing "Select date" is an ANSWER, not a missing value.** Choosing a
+new check-in clears the check-out on purpose. Falling back to the URL there
+resurrected the old check-out, so one click looked like a complete stay: wrong
+nights priced, and the auto-advance replaced the calendar before a check-out
+could be chosen. `fromPicker()` consults the URL only when the element does not
+exist at all — i.e. on pages with no picker (checkout, listings).
+
+**`/assets` revalidates now (`max-age=0, must-revalidate`), it is not cached for
+five minutes.** That window meant a shipped fix reached nobody until it expired,
+and made verification unreliable. `Timing-Allow-Origin: *` is set so
+`transferSize` is meaningful cross-origin — without it the browser reports 0
+whether cached or not, which is actively misleading when chasing "why hasn't my
+fix appeared". **Verify front-end changes in a separate browser** (the in-app
+one held stale copies for far longer than the TTL).
+
 **`readSelection()` reads the WIDGET first, the URL second.** It was the other
 way round, and a property page is always reached with `?checkin=…`, so the URL
 always matched and the picker was never consulted: changing dates updated the
