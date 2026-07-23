@@ -1029,36 +1029,68 @@
     var el = card.querySelector('[fs-list-field="price"], [data-vbk-card-price]');
     if (!el) return;
 
-    // Keep the original around so a later re-render can put it back, and so
-    // this never doubles up if Finsweet re-runs the list.
+    var live = String(result.nightlyAvg || result.nightlyFrom);
+    if (el.textContent === live) return; // already painted; do not churn the DOM
+
+    // Keep the original for reference and so this is traceable in the DOM.
     if (!el.hasAttribute('data-vbk-price-original')) {
       el.setAttribute('data-vbk-price-original', el.textContent || '');
     }
-    el.textContent = money(result.nightlyAvg || result.nightlyFrom, result.currency);
-    el.setAttribute('data-vbk-priced', 'live');
 
-    // "Per Night + Taxes" is now true. If the card says something else, say what
-    // the number really is rather than leaving a mislabelled figure.
-    var label = card.querySelector('[data-vbk-card-price-label]');
-    if (label) label.textContent = 'per night + taxes';
+    // A BARE NUMBER, matching what was there. The rupee sign is a sibling
+    // element, so a formatted string would render "₹ ₹5,500" — and the field
+    // carries fs-list-fieldtype="number", so Finsweet parses it for price
+    // sorting and range filters. Anything but digits breaks both.
+    el.textContent = live;
+    el.setAttribute('data-vbk-priced', 'live');
   }
 
+  /**
+   * The /properties list is rendered by Finsweet, not by Webflow's server, so
+   * at boot there is usually nothing on the page yet — a single pass at load
+   * time found zero cards and did nothing at all. Finsweet also re-renders the
+   * whole list on every filter, sort or page change, discarding anything
+   * written into a card. So this watches the list and re-applies.
+   */
   var ListingPage = {
+    resultsKey: null,
+    results: null,
+    applying: false,
+
     init: function () {
       var sel = readSelection();
       if (!sel.checkIn || !sel.checkOut || sel.nights < 1) return;
+      this.observe();
+      this.apply();
+    },
 
-      // Pair each rendered card with a listing id: an explicit attribute if the
-      // client bound one, otherwise the slug in the card's detail link.
-      //
-      // Property cards contain their own nested collection lists (amenities,
-      // "great for"), so .w-dyn-item matches far more than just cards. Only the
-      // OUTERMOST item that resolves to a listing counts — otherwise a nested
-      // item could be hidden instead of the card that contains it.
-      var candidates = $$('.w-dyn-item, [role="listitem"]');
+    observe: function () {
+      if (this.observer || typeof MutationObserver === 'undefined') return;
+      var self = this;
+      var root = $('[fs-list-element="list"]') || document.body;
+      var timer = null;
+
+      this.observer = new MutationObserver(function () {
+        // Painting mutates cards, which would re-trigger this immediately.
+        if (self.applying) return;
+        clearTimeout(timer);
+        timer = setTimeout(function () { self.apply(); }, 250);
+      });
+      this.observer.observe(root, { childList: true, subtree: true });
+    },
+
+    /**
+     * Pair each rendered card with a listing id: an explicit attribute if the
+     * client bound one, otherwise the slug in the card's detail link.
+     *
+     * Property cards contain their own nested collection lists (amenities,
+     * "great for"), so .w-dyn-item matches far more than just cards. Only the
+     * OUTERMOST item that resolves to a listing counts — otherwise a nested
+     * item could be hidden instead of the card that contains it.
+     */
+    collectCards: function () {
       var cards = [];
-
-      candidates.forEach(function (el) {
+      $$('.w-dyn-item, [role="listitem"]').forEach(function (el) {
         var attr = el.querySelector('[data-guesty-listing]');
         var id = attr && attr.getAttribute('data-guesty-listing');
         if (!id) {
@@ -1070,48 +1102,82 @@
           }
         }
         if (!id) return;
-        // Skip anything already covered by an ancestor card.
         for (var i = 0; i < cards.length; i += 1) {
           if (cards[i].card.contains(el)) return;
         }
         cards.push({ card: el, id: id });
       });
+      return cards;
+    },
 
+    apply: function () {
+      var sel = readSelection();
+      if (!sel.checkIn || !sel.checkOut || sel.nights < 1) return;
+
+      var cards = this.collectCards();
       if (!cards.length) return;
 
-      var ids = cards.map(function (c) { return c.id; });
+      // One request per date range, however many times the list re-renders.
+      var key = sel.checkIn + '|' + sel.checkOut;
+      var self = this;
+      if (this.resultsKey === key && this.results) {
+        this.paint(cards, this.results);
+        return;
+      }
+      if (this.inflight === key) return;
+      this.inflight = key;
 
       api('/api/search', {
         method: 'POST',
-        body: { listingIds: ids, checkIn: sel.checkIn, checkOut: sel.checkOut },
+        body: {
+          listingIds: cards.map(function (c) { return c.id; }),
+          checkIn: sel.checkIn,
+          checkOut: sel.checkOut,
+        },
       })
         .then(function (data) {
           var map = {};
           data.results.forEach(function (r) { map[r.listingId] = r; });
-          var hidden = 0;
-          cards.forEach(function (entry) {
-            var r = map[entry.id];
-            var card = entry.card;
-            if (r && !r.available) {
-              card.setAttribute('data-vbk-unavailable', 'true');
-              card.style.display = 'none';
-              hidden += 1;
-            } else {
-              card.removeAttribute('data-vbk-unavailable');
-              priceCard(card, r);
-            }
-          });
-          var counter = $('[data-vbk-availability-note]');
-          if (counter) {
-            counter.textContent = hidden
-              ? hidden + ' home' + (hidden === 1 ? ' is' : 's are') + ' booked for these dates and hidden.'
-              : 'All homes below are available for your dates.';
-          }
+          self.resultsKey = key;
+          self.results = map;
+          self.inflight = null;
+          self.paint(self.collectCards(), map);
           document.dispatchEvent(new CustomEvent('viraalay:searchfiltered', { detail: data }));
         })
         .catch(function (err) {
+          self.inflight = null;
           console.warn('[viraalay] availability filter skipped:', err.message);
         });
+    },
+
+    paint: function (cards, map) {
+      this.applying = true;
+
+      var hidden = 0;
+      cards.forEach(function (entry) {
+        var r = map[entry.id];
+        var card = entry.card;
+        if (r && !r.available) {
+          card.setAttribute('data-vbk-unavailable', 'true');
+          card.style.display = 'none';
+          hidden += 1;
+        } else {
+          card.removeAttribute('data-vbk-unavailable');
+          priceCard(card, r);
+        }
+      });
+
+      var counter = $('[data-vbk-availability-note]');
+      if (counter) {
+        counter.textContent = hidden
+          ? hidden + ' home' + (hidden === 1 ? ' is' : 's are') + ' booked for these dates and hidden.'
+          : 'All homes below are available for your dates.';
+      }
+
+      // The observer fires as a microtask, so this cannot be cleared inline or
+      // the paint's own mutations would schedule another pass, forever.
+      var self = this;
+      setTimeout(function () { self.applying = false; }, 0);
     },
   };
 
