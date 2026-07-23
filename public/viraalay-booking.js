@@ -1103,6 +1103,10 @@
       this.bound = true;
       var self = this;
 
+      this.keepCalendarOpen();
+
+      // CAPTURE phase: keepCalendarOpen() stops calendar clicks from bubbling
+      // past the popover, so a listener on the way up would never see them.
       document.addEventListener('click', function (e) {
         if (!e.target.closest) return;
 
@@ -1124,7 +1128,45 @@
         if (day && !/\b(emp|dis)\b/.test(day.className || '') && day.getAttribute('data-vbk-blocked') !== 'true') {
           self.afterDates();
         }
+      }, true);
+    },
+
+    /**
+     * Stops the picker from closing its own calendar.
+     *
+     * Choosing a date or a month arrow makes the picker rebuild the calendar,
+     * which replaces every node inside the popover. The click then carries on
+     * up to the picker's document-level "a click outside closes the popover"
+     * check, which asks whether the clicked element sits inside the popover —
+     * and it does not, because the rebuild just destroyed it. The picker
+     * concludes the guest clicked away and closes.
+     *
+     * The visible damage: month arrows shut the calendar, and picking a
+     * check-in shut it before the guest could pick a check-out, so every stay
+     * needed the calendar reopened by hand halfway through.
+     *
+     * Stop calendar clicks at the popover and that check never runs for them.
+     * Closing on a genuine outside click still works, as does the picker's own
+     * deliberate close once both dates are set — that one is on a timer, not on
+     * this event.
+     */
+    keepCalendarOpen: function () {
+      var attach = function (pop) {
+        if (!pop || pop.getAttribute('data-vbk-guarded')) return false;
+        pop.setAttribute('data-vbk-guarded', '1');
+        pop.addEventListener('click', function (e) {
+          if (e.target.closest && e.target.closest('.vla-cal')) e.stopPropagation();
+        });
+        return true;
+      };
+
+      // The popover is created lazily, the first time a field is opened.
+      if (attach(document.querySelector('.vla-pop'))) return;
+      if (typeof MutationObserver === 'undefined') return;
+      var observer = new MutationObserver(function () {
+        if (attach(document.querySelector('.vla-pop'))) observer.disconnect();
       });
+      observer.observe(document.body, { childList: true });
     },
 
     open: function (type, delay) {
