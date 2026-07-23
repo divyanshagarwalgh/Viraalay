@@ -1,0 +1,22 @@
+# Secrets - never commit. The PayU salt signs payment amounts and the Guesty
+# client secrets grant full account access. If any of these ever reach a repo,
+# rotate them immediately rather than rewriting history.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local token cache (contains live Guesty access tokens)
+viraalay-token-*.json
+
+# Raw API dumps and CMS exports. No credentials, but they contain property
+# addresses, pricing and account ids that have no business in a repo.
+backups/
+
+node_modules/
+npm-debug.log*
+.DS_Store
+.vercel
+coverage/
+*.local

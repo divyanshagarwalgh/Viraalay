@@ -1,0 +1,27 @@
+{
+  "name": "viraalay-booking-engine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Booking middleware for the Viraalay Webflow site: Guesty availability/quotes/reservations, PayU hosted checkout, and two-way Guesty <-> Webflow CMS sync.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "sync": "node scripts/sync-once.js",
+    "register-webhooks": "node scripts/register-webhooks.js",
+    "scan-secrets": "node scripts/scan-secrets.js",
+    "cleanup": "node scripts/cleanup-demo-data.js",
+    "fill-content": "node scripts/fill-property-content.js",
+    "fill-remaining": "node scripts/fill-remaining.js",
+    "sync-reviews": "node scripts/sync-reviews.js",
+    "gen-faqs": "node scripts/generate-faqs.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}

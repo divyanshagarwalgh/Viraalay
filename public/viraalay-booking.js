@@ -1,0 +1,943 @@
+/* =============================================================================
+ * Viraalay booking engine - front end
+ *
+ * Loaded from the booking service with a single tag in the Webflow site footer:
+ *   <script defer src="https://YOUR-SERVICE/assets/viraalay-booking.js"></script>
+ *
+ * Design rules this file follows:
+ *  - It never calculates a price. Every amount shown comes from /api/quote,
+ *    which comes from Guesty. The browser is a renderer, not a pricing engine.
+ *  - It never sees a Guesty or PayU secret.
+ *  - It only ever writes into elements that already exist in the Webflow
+ *    Designer, or clones a native template node, so the client can restyle
+ *    everything without touching this file. The one exception is the date
+ *    availability overlay, which has to be generated per day.
+ * ========================================================================== */
+(function () {
+  'use strict';
+
+  /* ---------------------------------------------------------------- config */
+
+  var SELF = document.currentScript || (function () {
+    var s = document.getElementsByTagName('script');
+    return s[s.length - 1];
+  })();
+
+  var API_BASE = (function () {
+    var override = window.VIRAALAY_BOOKING && window.VIRAALAY_BOOKING.apiBase;
+    if (override) return String(override).replace(/\/$/, '');
+    try {
+      var u = new URL(SELF.src);
+      return u.origin;
+    } catch (e) {
+      return '';
+    }
+  })();
+
+  var CFG = {
+    checkoutPath: '/checkout',
+    confirmedPath: '/booking-confirmed',
+    failedPath: '/booking-failed',
+    currency: 'INR',
+    captureMode: 'full',
+    depositPercent: 30,
+  };
+
+  /* ----------------------------------------------------------------- utils */
+
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+
+  function on(el, evt, fn) { if (el) el.addEventListener(evt, fn); }
+
+  function text(el, value) { if (el) el.textContent = value; }
+
+  function show(el, display) { if (el) el.style.display = display || 'block'; }
+  function hide(el) { if (el) el.style.display = 'none'; }
+
+  var MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+  function pad(n) { return n < 10 ? '0' + n : String(n); }
+
+  function toISO(d) {
+    if (!d) return null;
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+
+  /**
+   * Tolerant date parser. The hero/nav search widget renders dates as human
+   * text, so this accepts what it produces as well as ISO and dd/mm/yyyy.
+   */
+  function parseDate(value) {
+    if (!value) return null;
+    var s = String(value).trim();
+    if (!s || /select|add date|check/i.test(s)) return null;
+
+    var iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]);
+
+    var dmy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (dmy) return new Date(+dmy[3], +dmy[2] - 1, +dmy[1]);
+
+    // "24 Jul", "24 Jul 2026", "Jul 24", "Fri, 24 Jul 2026"
+    var cleaned = s.replace(/^[a-z]{3,9},?\s*/i, '');
+    var m = cleaned.match(/(\d{1,2})\s*([a-z]{3,9})\.?\s*(\d{4})?/i)
+      || cleaned.match(/([a-z]{3,9})\.?\s*(\d{1,2}),?\s*(\d{4})?/i);
+    if (m) {
+      var day, monName, year;
+      if (/^\d/.test(m[1])) { day = +m[1]; monName = m[2]; year = m[3]; }
+      else { monName = m[1]; day = +m[2]; year = m[3]; }
+      var mon = MONTHS.indexOf(String(monName).slice(0, 3).toLowerCase());
+      if (mon >= 0 && day >= 1 && day <= 31) {
+        var y = year ? +year : new Date().getFullYear();
+        var d = new Date(y, mon, day);
+        // No year given and the date already passed -> they mean next year.
+        if (!year && d < startOfToday()) d = new Date(y + 1, mon, day);
+        return d;
+      }
+    }
+    var fallback = new Date(s);
+    return isNaN(fallback.getTime()) ? null : fallback;
+  }
+
+  function startOfToday() {
+    var d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function nightsBetween(a, b) {
+    if (!a || !b) return 0;
+    return Math.max(0, Math.round((b - a) / 86400000));
+  }
+
+  function fmtDate(iso) {
+    var d = parseDate(iso);
+    if (!d) return '--';
+    return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  /**
+   * Guesty returns a policy code on every quote (the rate plan's
+   * cancellationPolicy). It is the authoritative policy for that booking, so
+   * the checkout renders it from the quote rather than from the CMS.
+   */
+  var POLICIES = {
+    flexible: 'Free cancellation up to 1 day before check-in. Cancellations within 24 hours of check-in are non-refundable.',
+    moderate: 'Free cancellation up to 5 days before check-in. Cancel between 5 days and 24 hours before check-in for a 50% refund. Within 24 hours is non-refundable.',
+    strict: 'Cancel at least 7 days before check-in for a 50% refund. Cancellations within 7 days of check-in are non-refundable.',
+    nonrefundable: 'This rate is non-refundable. Once confirmed, the booking cannot be cancelled for a refund.',
+  };
+
+  function policyText(code) {
+    if (!code) return null;
+    var key = String(code).toLowerCase().replace(/[^a-z]/g, '');
+    return POLICIES[key] || null;
+  }
+
+  var money = (function () {
+    var fmt;
+    try {
+      fmt = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+    } catch (e) { fmt = null; }
+    return function (amount, currency) {
+      var n = Number(amount) || 0;
+      if (currency && currency !== 'INR') {
+        try {
+          return new Intl.NumberFormat('en-IN', { style: 'currency', currency: currency, maximumFractionDigits: 0 }).format(n);
+        } catch (e) { /* fall through */ }
+      }
+      return fmt ? fmt.format(n) : '₹' + Math.round(n).toLocaleString('en-IN');
+    };
+  })();
+
+  function qs() {
+    var out = {};
+    new URLSearchParams(location.search).forEach(function (v, k) { out[k] = v; });
+    return out;
+  }
+
+  function api(path, options) {
+    var opts = options || {};
+    return fetch(API_BASE + path, {
+      method: opts.method || 'GET',
+      headers: opts.body ? { 'Content-Type': 'application/json' } : undefined,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    }).then(function (res) {
+      return res.text().then(function (t) {
+        var json;
+        try { json = t ? JSON.parse(t) : null; } catch (e) { json = { message: t }; }
+        if (!res.ok) {
+          var err = new Error((json && json.message) || 'Request failed');
+          err.code = json && json.error;
+          err.status = res.status;
+          throw err;
+        }
+        return json;
+      });
+    });
+  }
+
+  /* ------------------------------------------------------------ selection */
+
+  /**
+   * The single source of truth for what the guest has chosen. Reads URL params
+   * first (the hero search widget writes them), then falls back to the text the
+   * widget rendered into the booking sidebar.
+   */
+  function readSelection() {
+    var p = qs();
+    var ci = parseDate(p.checkin) || parseDate(textOf('#bk_ci')) || parseDate(textOf('#vbk_ci'));
+    var co = parseDate(p.checkout) || parseDate(textOf('#bk_co')) || parseDate(textOf('#vbk_co'));
+
+    var adults = int(p.adults, 0) || guestsFromText(textOf('#bk_g')) || 2;
+    var children = int(p.children, 0);
+    var infants = int(p.infants, 0);
+    var pets = int(p.pets, 0);
+
+    return {
+      checkIn: toISO(ci),
+      checkOut: toISO(co),
+      adults: adults,
+      children: children,
+      infants: infants,
+      pets: pets,
+      nights: nightsBetween(ci, co),
+      coupon: p.coupon || '',
+    };
+  }
+
+  function textOf(sel) {
+    var el = $(sel);
+    return el ? el.textContent : '';
+  }
+
+  function int(v, d) {
+    var n = parseInt(v, 10);
+    return isNaN(n) ? d : n;
+  }
+
+  function guestsFromText(t) {
+    if (!t) return 0;
+    var m = String(t).match(/(\d+)/);
+    return m ? +m[1] : 0;
+  }
+
+  /**
+   * slug -> property record, fetched once from the booking service. This is how
+   * a page knows which Guesty listing it is showing without anyone having to
+   * bind a hidden attribute in the Designer.
+   */
+  var INDEX = { bySlug: {}, byListing: {}, loaded: false };
+
+  function loadIndex() {
+    return api('/api/properties-index')
+      .then(function (data) {
+        (data.properties || []).forEach(function (p) {
+          if (p.slug) INDEX.bySlug[p.slug] = p;
+          if (p.listingId) INDEX.byListing[p.listingId] = p;
+        });
+        INDEX.loaded = true;
+        window.ViraalayBooking.index = INDEX;
+        return INDEX;
+      })
+      .catch(function (err) {
+        console.warn('[viraalay] property index unavailable:', err.message);
+        return INDEX;
+      });
+  }
+
+  function currentSlug() {
+    var parts = location.pathname.split('/').filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : '';
+  }
+
+  function currentProperty() {
+    return INDEX.bySlug[currentSlug()] || null;
+  }
+
+  function listingId() {
+    // 1. An attribute bound to the CMS field in the Designer, if one exists.
+    var el = $('[data-guesty-listing]');
+    if (el) {
+      var v = (el.getAttribute('data-guesty-listing') || '').trim();
+      if (v) return v;
+    }
+    // 2. An explicit id in the URL (used by /checkout).
+    var p = qs();
+    if (p.listing || p.listingId) return String(p.listing || p.listingId).trim();
+    // 3. The service's slug index.
+    var record = currentProperty();
+    return record && record.listingId ? record.listingId : '';
+  }
+
+  function propertyContext() {
+    var p = qs();
+    var record = currentProperty() || {};
+    return {
+      listingId: listingId(),
+      propertyItemId: p.propertyId || record.itemId || '',
+      propertyName: p.property || record.name || textOf('h1') || document.title.split('|')[0].trim(),
+      propertySlug: p.slug || record.slug || currentSlug(),
+      propertyImage: p.image || record.image || '',
+      propertyLocation: p.location || record.location || textOf('[data-vbk-property-location]') || '',
+    };
+  }
+
+  /* ------------------------------------------------------- price rendering */
+
+  /**
+   * Renders quote line items by cloning the native template row that exists in
+   * the Designer, so all styling stays under the client's control.
+   */
+  function renderRows(container, quote) {
+    if (!container) return;
+    var tpl = container.querySelector('[data-vbk-row="template"], [data-vbc-row="template"]');
+    if (!tpl) return;
+    tpl.style.display = 'none';
+
+    $$('[data-vbk-row="generated"]', container).forEach(function (n) { n.remove(); });
+
+    var rows = [];
+    if (quote.invoiceItems && quote.invoiceItems.length) {
+      quote.invoiceItems.forEach(function (item) {
+        rows.push([item.title, money(item.amount, quote.currency)]);
+      });
+    } else {
+      if (quote.nights && quote.fareAccommodation) {
+        rows.push([
+          money(quote.perNight || quote.fareAccommodation / quote.nights, quote.currency) +
+            ' x ' + quote.nights + ' night' + (quote.nights === 1 ? '' : 's'),
+          money(quote.fareAccommodation, quote.currency),
+        ]);
+      }
+      if (quote.fareCleaning) rows.push(['Cleaning fee', money(quote.fareCleaning, quote.currency)]);
+      if (quote.totalFees) rows.push(['Service fees', money(quote.totalFees, quote.currency)]);
+      if (quote.totalTaxes) rows.push(['Taxes', money(quote.totalTaxes, quote.currency)]);
+    }
+
+    rows.forEach(function (pair) {
+      var node = tpl.cloneNode(true);
+      node.setAttribute('data-vbk-row', 'generated');
+      // The template carries a hidden-by-default class so it never renders as
+      // a stray "Line item 0" row before a quote exists. Clones must shed it.
+      node.classList.remove('vbk-rowtpl');
+      node.style.display = '';
+      var cells = node.children;
+      if (cells[0]) cells[0].textContent = pair[0];
+      if (cells[1]) cells[1].textContent = pair[1];
+      container.appendChild(node);
+    });
+
+    if (quote.captureMode === 'part' && quote.payableNow != null && quote.payableNow < quote.total) {
+      var note = tpl.cloneNode(true);
+      note.setAttribute('data-vbk-row', 'generated');
+      note.style.display = '';
+      if (note.children[0]) note.children[0].textContent = 'Due now (' + CFG.depositPercent + '%)';
+      if (note.children[1]) note.children[1].textContent = money(quote.payableNow, quote.currency);
+      container.appendChild(note);
+
+      var bal = tpl.cloneNode(true);
+      bal.setAttribute('data-vbk-row', 'generated');
+      bal.style.display = '';
+      if (bal.children[0]) bal.children[0].textContent = 'Balance at check-in';
+      if (bal.children[1]) bal.children[1].textContent = money(quote.balanceDue, quote.currency);
+      container.appendChild(bal);
+    }
+  }
+
+  /* ------------------------------------------------- property detail page */
+
+  var PropertyPage = {
+    quoteToken: 0,
+    lastKey: '',
+
+    init: function () {
+      var id = listingId();
+      if (!id) return;
+
+      this.panel = $('[data-vbk-quote]');
+      this.rows = $('[data-vbk-quote-rows]');
+      this.totalEl = $('[data-vbk-quote-total]');
+      this.statusEl = $('[data-vbk-quote-status]');
+      this.reserveEl = $('[data-vbk-reserve]');
+      this.perNightEl = $('[data-vbk-pernight]');
+
+      this.loadAvailability(id);
+      this.watch();
+      this.refresh();
+
+      var self = this;
+      on(this.reserveEl, 'click', function (e) {
+        e.preventDefault();
+        self.goToCheckout();
+      });
+
+      // Drive the site's own "Book Now" button rather than competing with it.
+      // Matched by hook attribute, class, or visible text — whichever the
+      // Designer happens to use.
+      //
+      // Webflow component buttons wrap their label in nested spans
+      // (.button-main > .button-main__inner > .button-main__mask >
+      // .button-main__text), so the clickable <a> is never itself a leaf and
+      // the leaf that holds the text is a <span>. Match on text at any depth,
+      // include <span>, then resolve up to the real <a>/<button>. Dedupe on
+      // that resolved target — several nested elements share the same label,
+      // and binding each would fire goToCheckout once per level.
+      var booked = [];
+      $$('[data-vla-book], [data-vbk-booknow], .booking_button, a, button, span, div').forEach(function (btn) {
+        var hooked = btn.hasAttribute('data-vla-book') || btn.hasAttribute('data-vbk-booknow');
+        var isBookNow = hooked || /^book now$/i.test((btn.textContent || '').trim());
+        if (!isBookNow) return;
+        var target = hooked ? btn : btn.closest('a, button') || btn;
+        if (booked.indexOf(target) > -1) return;
+        booked.push(target);
+        on(target, 'click', function (e) {
+          e.preventDefault();
+          self.goToCheckout();
+        });
+      });
+    },
+
+    loadAvailability: function (id) {
+      var self = this;
+      var from = toISO(startOfToday());
+      var to = toISO(new Date(Date.now() + 400 * 86400000));
+      api('/api/availability?listingId=' + encodeURIComponent(id) + '&from=' + from + '&to=' + to)
+        .then(function (data) {
+          self.availability = data;
+          window.ViraalayBooking.availability = data;
+          self.paintCalendar();
+          document.dispatchEvent(new CustomEvent('viraalay:availability', { detail: data }));
+        })
+        .catch(function (err) {
+          console.warn('[viraalay] availability unavailable:', err.message);
+        });
+    },
+
+    /**
+     * Greys out unavailable days in whichever calendar is on screen. The hero
+     * widget renders day cells with a data-date attribute; anything matching is
+     * disabled. Runs again whenever the calendar re-renders.
+     */
+    paintCalendar: function () {
+      if (!this.availability) return;
+      var blocked = {};
+      (this.availability.blocked || []).forEach(function (d) { blocked[d] = true; });
+
+      $$('[data-date]').forEach(function (cell) {
+        var d = cell.getAttribute('data-date');
+        if (!d) return;
+        if (blocked[d]) {
+          cell.setAttribute('data-vbk-blocked', 'true');
+          cell.style.opacity = '0.32';
+          cell.style.textDecoration = 'line-through';
+          cell.style.pointerEvents = 'none';
+        } else {
+          cell.removeAttribute('data-vbk-blocked');
+        }
+      });
+    },
+
+    /** Poll for changes made by the separately-owned date picker widget. */
+    watch: function () {
+      var self = this;
+      setInterval(function () {
+        var sel = readSelection();
+        var key = [sel.checkIn, sel.checkOut, sel.adults, sel.children, sel.infants].join('|');
+        if (key !== self.lastKey) {
+          self.lastKey = key;
+          self.refresh();
+        }
+        self.paintCalendar();
+      }, 600);
+    },
+
+    refresh: function () {
+      var id = listingId();
+      var sel = readSelection();
+      if (!id) return;
+
+      if (!sel.checkIn || !sel.checkOut || sel.nights < 1) {
+        text(this.statusEl, 'Select your dates to see the total for your stay.');
+        text(this.totalEl, '');
+        if (this.reserveEl) this.reserveEl.setAttribute('data-vbk-state', 'needs-dates');
+        return;
+      }
+
+      var minNights = (this.availability && this.availability.baseMinNights) || 1;
+      if (sel.nights < minNights) {
+        text(this.statusEl, 'This home has a ' + minNights + '-night minimum stay.');
+        text(this.totalEl, '');
+        if (this.reserveEl) this.reserveEl.setAttribute('data-vbk-state', 'min-nights');
+        return;
+      }
+
+      var token = ++this.quoteToken;
+      var self = this;
+      text(this.statusEl, 'Checking availability and pricing…');
+
+      api('/api/quote', {
+        method: 'POST',
+        body: {
+          listingId: id,
+          checkIn: sel.checkIn,
+          checkOut: sel.checkOut,
+          adults: sel.adults,
+          children: sel.children,
+          infants: sel.infants,
+          pets: sel.pets,
+          coupon: sel.coupon,
+        },
+      })
+        .then(function (quote) {
+          if (token !== self.quoteToken) return; // a newer request won
+          self.quote = quote;
+          window.ViraalayBooking.quote = quote;
+          // The panel is hidden in the Designer so it never duplicates the
+          // site's own price card while the engine is idle. Reveal it only
+          // once there is a real, live-priced quote to show.
+          if (self.panel) self.panel.style.display = 'block';
+          renderRows(self.rows, quote);
+          text(self.totalEl, money(quote.total, quote.currency));
+          text(self.perNightEl, money(quote.perNight, quote.currency) + ' / night');
+          text(self.statusEl, sel.nights + ' night' + (sel.nights === 1 ? '' : 's') + ', all taxes included');
+          if (self.reserveEl) self.reserveEl.setAttribute('data-vbk-state', 'ready');
+          document.dispatchEvent(new CustomEvent('viraalay:quote', { detail: quote }));
+        })
+        .catch(function (err) {
+          if (token !== self.quoteToken) return;
+          self.quote = null;
+          text(self.totalEl, '');
+          text(
+            self.statusEl,
+            err.status === 422 || err.code === 'no_rate_plan'
+              ? 'These dates are not available. Please try different dates.'
+              : 'We could not price these dates just now. Please try again.'
+          );
+          if (self.reserveEl) self.reserveEl.setAttribute('data-vbk-state', 'error');
+        });
+    },
+
+    goToCheckout: function () {
+      var sel = readSelection();
+      var ctx = propertyContext();
+      if (!sel.checkIn || !sel.checkOut || sel.nights < 1) {
+        var trigger = $('[data-vla-seg="date"]') || $('[data-vla-open="modal"]');
+        if (trigger) trigger.click();
+        text(this.statusEl, 'Please choose your check-in and check-out dates first.');
+        return;
+      }
+      var params = new URLSearchParams({
+        listing: ctx.listingId,
+        checkin: sel.checkIn,
+        checkout: sel.checkOut,
+        adults: String(sel.adults),
+        children: String(sel.children),
+        infants: String(sel.infants),
+        property: ctx.propertyName || '',
+        slug: ctx.propertySlug || '',
+        location: ctx.propertyLocation || '',
+      });
+      if (ctx.propertyItemId) params.set('propertyId', ctx.propertyItemId);
+      if (ctx.propertyImage) params.set('image', ctx.propertyImage);
+      if (sel.coupon) params.set('coupon', sel.coupon);
+      location.href = CFG.checkoutPath + '?' + params.toString();
+    },
+  };
+
+  /* --------------------------------------------------------- checkout page */
+
+  var CheckoutPage = {
+    init: function () {
+      var p = qs();
+      this.sel = readSelection();
+      this.ctx = {
+        listingId: p.listing || p.listingId || '',
+        propertyItemId: p.propertyId || '',
+        propertyName: p.property || '',
+        propertySlug: p.slug || '',
+        propertyImage: p.image || '',
+        propertyLocation: p.location || '',
+      };
+
+      if (!this.ctx.listingId || !this.sel.checkIn || !this.sel.checkOut) {
+        show($('#vbk_alert'), 'block');
+        return;
+      }
+
+      this.paintStay();
+      this.wire();
+      this.loadQuote();
+    },
+
+    paintStay: function () {
+      text($('#vbk_prop'), this.ctx.propertyName || 'Your stay');
+      text($('#vbk_loc'), this.ctx.propertyLocation || '');
+      text($('#vbk_ci'), fmtDate(this.sel.checkIn));
+      text($('#vbk_co'), fmtDate(this.sel.checkOut));
+
+      var guests = this.sel.adults + this.sel.children;
+      text($('#vbk_guests'), guests + ' guest' + (guests === 1 ? '' : 's'));
+      text($('#vbk_nights'), this.sel.nights + ' night' + (this.sel.nights === 1 ? '' : 's'));
+
+      var thumb = $('#vbk_thumb');
+      if (thumb && this.ctx.propertyImage) {
+        thumb.style.backgroundImage = 'url("' + this.ctx.propertyImage.replace(/"/g, '') + '")';
+      }
+
+      var edit = $('#vbk_edit');
+      if (edit && this.ctx.propertySlug) edit.setAttribute('href', '/properties/' + this.ctx.propertySlug);
+    },
+
+    wire: function () {
+      var self = this;
+
+      // This is a Webflow form element; its native submit must never fire.
+      var form = $('[data-vbk="form"]');
+      on(form, 'submit', function (e) { e.preventDefault(); });
+
+      on($('#vbk_pay'), 'click', function (e) {
+        e.preventDefault();
+        self.pay();
+      });
+
+      on($('#vbk_couponbtn'), 'click', function (e) {
+        e.preventDefault();
+        self.sel.coupon = ($('#vbk_coupon') || {}).value || '';
+        self.loadQuote();
+      });
+
+      var coupon = $('#vbk_coupon');
+      on(coupon, 'keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); $('#vbk_couponbtn').click(); }
+      });
+    },
+
+    loadQuote: function () {
+      var self = this;
+      text($('#vbk_total'), 'Pricing…');
+      api('/api/quote', {
+        method: 'POST',
+        body: {
+          listingId: this.ctx.listingId,
+          checkIn: this.sel.checkIn,
+          checkOut: this.sel.checkOut,
+          adults: this.sel.adults,
+          children: this.sel.children,
+          infants: this.sel.infants,
+          coupon: this.sel.coupon,
+        },
+      })
+        .then(function (quote) {
+          self.quote = quote;
+          renderRows($('#vbk_rows'), quote);
+          var payable = quote.captureMode === 'part' ? quote.payableNow : quote.total;
+          text($('#vbk_total'), money(payable, quote.currency));
+          hide($('#vbk_alert'));
+
+          // Show the policy Guesty will actually apply to this booking.
+          var policy = policyText(quote.cancellationPolicy);
+          if (policy) text($('#vbk_policy'), policy);
+
+          if (quote.checkInTime) text($('#vbk_cit'), 'From ' + quote.checkInTime);
+          if (quote.checkOutTime) text($('#vbk_cot'), 'Until ' + quote.checkOutTime);
+        })
+        .catch(function (err) {
+          text($('#vbk_total'), '--');
+          self.error(
+            err.code === 'no_rate_plan'
+              ? 'These dates are no longer available. Please choose different dates.'
+              : 'We could not price this stay. Please go back and try again.'
+          );
+        });
+    },
+
+    error: function (message) {
+      var el = $('#vbk_err');
+      if (!el) return;
+      el.textContent = message;
+      show(el, 'block');
+    },
+
+    validate: function () {
+      var fields = {
+        firstName: ($('#vbk_fn') || {}).value,
+        lastName: ($('#vbk_ln') || {}).value,
+        email: ($('#vbk_em') || {}).value,
+        phone: ($('#vbk_ph') || {}).value,
+      };
+      var terms = $('[data-vbk="termsrow"] input[type="checkbox"]') || $('#vbk_terms');
+
+      if (!String(fields.firstName || '').trim()) return 'Please enter your first name.';
+      if (!String(fields.lastName || '').trim()) return 'Please enter your last name.';
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(fields.email || '').trim())) return 'Please enter a valid email address.';
+      if (String(fields.phone || '').replace(/\D/g, '').length < 8) return 'Please enter a valid mobile number.';
+      if (terms && !terms.checked) return 'Please accept the house rules and cancellation policy to continue.';
+      this.guest = {
+        firstName: fields.firstName.trim(),
+        lastName: fields.lastName.trim(),
+        email: fields.email.trim(),
+        phone: fields.phone.trim(),
+      };
+      return null;
+    },
+
+    pay: function () {
+      var self = this;
+      var button = $('#vbk_pay');
+      if (button && button.getAttribute('data-vbk-busy') === 'true') return;
+
+      hide($('#vbk_err'));
+      var problem = this.validate();
+      if (problem) return this.error(problem);
+      if (!this.quote) return this.error('Please wait for pricing to finish loading.');
+
+      if (button) {
+        button.setAttribute('data-vbk-busy', 'true');
+        button.textContent = 'Redirecting to payment…';
+      }
+
+      api('/api/checkout', {
+        method: 'POST',
+        body: {
+          listingId: this.ctx.listingId,
+          checkIn: this.sel.checkIn,
+          checkOut: this.sel.checkOut,
+          adults: this.sel.adults,
+          children: this.sel.children,
+          infants: this.sel.infants,
+          coupon: this.sel.coupon,
+          guest: this.guest,
+          specialRequests: ($('#vbk_msg') || {}).value || '',
+          propertyItemId: this.ctx.propertyItemId,
+          propertyName: this.ctx.propertyName,
+          propertySlug: this.ctx.propertySlug,
+          propertyImage: this.ctx.propertyImage,
+          propertyLocation: this.ctx.propertyLocation,
+        },
+      })
+        .then(function (res) {
+          submitToPayU(res.action, res.fields);
+        })
+        .catch(function (err) {
+          if (button) {
+            button.removeAttribute('data-vbk-busy');
+            button.textContent = 'Pay securely';
+          }
+          self.error(err.message || 'We could not start the payment. Please try again.');
+        });
+    },
+  };
+
+  /**
+   * PayU hosted checkout requires a real browser form POST - it will not accept
+   * a fetch. The form is built, submitted and immediately discarded.
+   */
+  function submitToPayU(action, fields) {
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action = action;
+    form.style.display = 'none';
+    Object.keys(fields).forEach(function (key) {
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = key;
+      input.value = fields[key] == null ? '' : String(fields[key]);
+      form.appendChild(input);
+    });
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  /* ----------------------------------------------------- confirmation page */
+
+  var ConfirmedPage = {
+    init: function () {
+      var ref = (qs().ref || '').toUpperCase();
+      if (!ref) return;
+      text($('#vbc_ref'), ref);
+
+      api('/api/booking/' + encodeURIComponent(ref))
+        .then(function (b) {
+          text($('#vbc_prop'), b.propertyName || 'Your stay');
+          text($('#vbc_loc'), b.propertyLocation || '');
+          text($('#vbc_ci'), fmtDate(b.checkIn));
+          text($('#vbc_co'), fmtDate(b.checkOut));
+          text($('#vbc_guests'), (b.adults + b.children) + ' guest' + ((b.adults + b.children) === 1 ? '' : 's'));
+          text($('#vbc_nights'), b.nights + ' night' + (b.nights === 1 ? '' : 's'));
+          text($('#vbc_guest'), b.guestName || '--');
+          text($('#vbc_code'), b.confirmationCode || 'Being issued');
+          text($('#vbc_txn'), b.paymentReference || '--');
+          text($('#vbc_total'), money(b.amountPaid || b.total, b.currency));
+          if (b.checkInTime) text($('#vbc_cit'), 'From ' + b.checkInTime);
+          if (b.checkOutTime) text($('#vbc_cot'), 'Until ' + b.checkOutTime);
+
+          renderRows($('#vbc_rows'), {
+            invoiceItems: b.lineItems,
+            currency: b.currency,
+            nights: b.nights,
+            fareAccommodation: b.fareAccommodation,
+            fareCleaning: b.fareCleaning,
+            totalFees: b.totalFees,
+            totalTaxes: b.totalTaxes,
+          });
+
+          var thumb = $('#vbc_thumb');
+          if (thumb && b.propertyImage) thumb.style.backgroundImage = 'url("' + b.propertyImage + '")';
+
+          var view = $('#vbc_view');
+          if (view && b.propertySlug) view.setAttribute('href', '/properties/' + b.propertySlug);
+          else if (view) view.style.display = 'none';
+
+          if (b.status !== 'Confirmed') {
+            text(
+              $('#vbc_sub'),
+              'Your payment has gone through. Our team is finalising the reservation with the host and will email your confirmation shortly.'
+            );
+          }
+        })
+        .catch(function () {
+          text($('#vbc_sub'), 'Your payment was received. If you do not get a confirmation email within an hour, contact us with the reference above.');
+        });
+    },
+  };
+
+  var FailedPage = {
+    init: function () {
+      var p = qs();
+      var ref = (p.ref || '').toUpperCase();
+      text($('#vbf_ref'), ref || 'not available');
+
+      var reasons = {
+        invalid_signature: 'The payment response could not be verified. No charge has been made.',
+        amount_mismatch: 'The amount captured did not match your booking total. We have held the booking and will contact you.',
+        verification_pending: 'We are still confirming this payment with PayU. Do not pay again — we will email you within a few minutes.',
+        not_found: 'We could not find this booking. Please start again.',
+        no_reference: 'The payment came back without a booking reference. Please start again.',
+      };
+      if (p.reason && reasons[p.reason]) text($('#vbf_sub'), reasons[p.reason]);
+      else if (p.reason) text($('#vbf_sub'), 'Your bank reported: ' + p.reason + '. Your card has not been charged.');
+
+      var retry = $('#vbf_retry');
+      if (retry) {
+        retry.setAttribute('href', document.referrer && /checkout/.test(document.referrer) ? document.referrer : '/properties');
+      }
+    },
+  };
+
+  /* ------------------------------------------------------- listing page */
+
+  var ListingPage = {
+    init: function () {
+      var sel = readSelection();
+      if (!sel.checkIn || !sel.checkOut || sel.nights < 1) return;
+
+      // Pair each rendered card with a listing id: an explicit attribute if the
+      // client bound one, otherwise the slug in the card's detail link.
+      //
+      // Property cards contain their own nested collection lists (amenities,
+      // "great for"), so .w-dyn-item matches far more than just cards. Only the
+      // OUTERMOST item that resolves to a listing counts — otherwise a nested
+      // item could be hidden instead of the card that contains it.
+      var candidates = $$('.w-dyn-item, [role="listitem"]');
+      var cards = [];
+
+      candidates.forEach(function (el) {
+        var attr = el.querySelector('[data-guesty-listing]');
+        var id = attr && attr.getAttribute('data-guesty-listing');
+        if (!id) {
+          var link = el.querySelector('a[href*="/properties/"]');
+          if (link) {
+            var slug = (link.getAttribute('href') || '').split('?')[0].split('/').filter(Boolean).pop();
+            var rec = INDEX.bySlug[slug];
+            if (rec && rec.listingId) id = rec.listingId;
+          }
+        }
+        if (!id) return;
+        // Skip anything already covered by an ancestor card.
+        for (var i = 0; i < cards.length; i += 1) {
+          if (cards[i].card.contains(el)) return;
+        }
+        cards.push({ card: el, id: id });
+      });
+
+      if (!cards.length) return;
+
+      var ids = cards.map(function (c) { return c.id; });
+
+      api('/api/search', {
+        method: 'POST',
+        body: { listingIds: ids, checkIn: sel.checkIn, checkOut: sel.checkOut },
+      })
+        .then(function (data) {
+          var map = {};
+          data.results.forEach(function (r) { map[r.listingId] = r; });
+          var hidden = 0;
+          cards.forEach(function (entry) {
+            var r = map[entry.id];
+            var card = entry.card;
+            if (r && !r.available) {
+              card.setAttribute('data-vbk-unavailable', 'true');
+              card.style.display = 'none';
+              hidden += 1;
+            } else {
+              card.removeAttribute('data-vbk-unavailable');
+            }
+          });
+          var counter = $('[data-vbk-availability-note]');
+          if (counter) {
+            counter.textContent = hidden
+              ? hidden + ' home' + (hidden === 1 ? ' is' : 's are') + ' booked for these dates and hidden.'
+              : 'All homes below are available for your dates.';
+          }
+          document.dispatchEvent(new CustomEvent('viraalay:searchfiltered', { detail: data }));
+        })
+        .catch(function (err) {
+          console.warn('[viraalay] availability filter skipped:', err.message);
+        });
+    },
+  };
+
+  /* -------------------------------------------------------------- bootstrap */
+
+  window.ViraalayBooking = {
+    apiBase: API_BASE,
+    readSelection: readSelection,
+    refresh: function () { PropertyPage.refresh(); },
+    money: money,
+    version: '1.0.0',
+  };
+
+  function boot() {
+    var path = location.pathname.replace(/\/$/, '') || '/';
+
+    var needsIndex = !/^\/(checkout|booking-confirmed|booking-failed)/.test(path);
+
+    Promise.all([
+      api('/api/config')
+        .then(function (cfg) {
+          CFG.captureMode = cfg.captureMode || CFG.captureMode;
+          CFG.depositPercent = cfg.depositPercent || CFG.depositPercent;
+          CFG.checkoutPath = cfg.checkoutPath || CFG.checkoutPath;
+        })
+        .catch(function () { /* defaults are fine */ }),
+      needsIndex ? loadIndex() : Promise.resolve(),
+    ])
+      .then(function () {
+        if (/^\/checkout/.test(path)) return CheckoutPage.init();
+        if (/^\/booking-confirmed/.test(path)) return ConfirmedPage.init();
+        if (/^\/booking-failed/.test(path)) return FailedPage.init();
+        if (/^\/properties\/.+/.test(path)) return PropertyPage.init();
+        if (/^\/properties$/.test(path)) return ListingPage.init();
+        // Any other page that happens to carry a listing id (e.g. a landing page).
+        if (listingId()) return PropertyPage.init();
+      });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
