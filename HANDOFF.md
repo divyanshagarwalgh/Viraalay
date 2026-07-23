@@ -108,6 +108,15 @@ directly to money.
    A valid token normally sits in `%TEMP%\viraalay-token-openApi.json` on the
    machine that last ran a script — that is where to get a value to seed with.
 
+   **This happened, and is currently seeded.** On 2026-07-23 the quota was spent
+   and pricing was down; `GUESTY_OPENAPI_ACCESS_TOKEN` +
+   `GUESTY_OPENAPI_EXPIRES_AT` were set on Railway from the local cache and
+   pricing came straight back. That seed expires **24 Jul 2026 11:03 IST**.
+   A seeded token wins over every other source, so nothing is written to `/data`
+   until it lapses; after that the service fetches once, caches to the volume,
+   and carries on. **Delete both variables after 24 Jul** — once past expiry they
+   are ignored but log a warning on every read.
+
 4. **The PayU credentials are LIVE, not test.** Probed: `info.payu.in` accepted
    the hash; `test.payu.in` returned "Invalid Hash." `PAYU_MODE=live` is
    therefore the only configuration that works. Nothing can be charged until the
