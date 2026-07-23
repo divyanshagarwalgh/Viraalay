@@ -207,8 +207,14 @@
     // resurrect the old check-out — which made the page think a full stay was
     // chosen after a single click, price the wrong nights, and skip the guest
     // straight past choosing a check-out at all.
-    var ci = fromPicker(['#bk_ci', '#vm_ci', '#vh_ci', '#vbk_ci'], p.checkin);
-    var co = fromPicker(['#bk_co', '#vm_co', '#vh_co', '#vbk_co'], p.checkout);
+    // ONLY real pickers belong here: the booking sidebar, the mobile modal and
+    // the hero bar. NOT #vbk_ci / #vbk_co — those are the checkout page's own
+    // display, which this page WRITES to (see CheckoutPage.render). Reading
+    // them made checkout ask itself for the dates before it had written any,
+    // find the "Select date" placeholder, and refuse the whole booking with
+    // "We could not load your booking". Every checkout broke.
+    var ci = fromPicker(['#bk_ci', '#vm_ci', '#vh_ci'], p.checkin);
+    var co = fromPicker(['#bk_co', '#vm_co', '#vh_co'], p.checkout);
 
     var children = int(p.children, 0);
     var infants = int(p.infants, 0);
