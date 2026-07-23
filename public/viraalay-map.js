@@ -119,9 +119,12 @@
       '.vp-cta{display:inline-block;margin-top:8px;font:600 11px/1 system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:' +
         BRAND +
         ';text-decoration:none}',
+      /* sidebar tint so the white cards read as cards, not blank space */
+      '.map_sidebar{background:#f6f3f4}',
+      '.map_filters{background:#f6f3f4}',
       /* cards (rendered by this script into .map_list) */
-      '.map_card{display:flex;gap:12px;padding:10px;border:1px solid #ececec;border-radius:14px;text-decoration:none;color:inherit;background:#fff;transition:box-shadow .15s,border-color .15s}',
-      '.map_card:hover{box-shadow:0 4px 16px rgba(0,0,0,.08)}',
+      '.map_card{display:flex;gap:12px;padding:10px;border:1px solid #eae6e8;border-radius:14px;text-decoration:none;color:inherit;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06);transition:box-shadow .15s,border-color .15s}',
+      '.map_card:hover{box-shadow:0 4px 16px rgba(0,0,0,.10)}',
       '.map_card.is-active{border-color:' + BRAND + ';box-shadow:0 6px 20px rgba(116,38,60,.18)}',
       '.map_card-image-wrap{flex:0 0 116px;width:116px;height:98px;border-radius:10px;overflow:hidden;background:#f2edef}',
       '.map_card-image{width:100%;height:100%;object-fit:cover;display:block}',
@@ -177,6 +180,13 @@
     var listEl = document.querySelector('[data-map-list]') || document.querySelector('.map_list');
     var countEl = document.querySelector('[data-map-count]') || document.querySelector('.map_count');
     var filterBtns = [].slice.call(document.querySelectorAll('[data-map-filter]'));
+
+    // The site runs Lenis smooth-scroll, which preventDefaults every wheel/touch
+    // event and so swallows the sidebar's own overflow scroll. Lenis skips any
+    // element (or ancestor) carrying data-lenis-prevent, so mark the scroll
+    // container — it restores native list scrolling on desktop and mobile.
+    var sidebarEl = document.querySelector('.map_sidebar');
+    if (sidebarEl) sidebarEl.setAttribute('data-lenis-prevent', '');
 
     var map = null;
     var mapReady = false;
