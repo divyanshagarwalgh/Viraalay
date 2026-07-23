@@ -1,11 +1,80 @@
 # Viraalay booking engine — HANDOFF
 
-**Read this first when resuming.** Last updated 2026-07-23.
+**Read this first when resuming.** Last updated 2026-07-23 (end of a long session;
+39 commits that day). HEAD at handover: `5a80e6f`.
 
 Companion docs in this repo:
 - `README.md` — architecture, API reference, security model, credential rotation
-- `DEPLOY.md` — the deployment runbook (the only work left)
+- `DEPLOY.md` — the deployment runbook (Parts 1–8 done)
 - `WEBFLOW.md` — every collection / page / class / attribute id in the Webflow site
+- `CLIENT-HANDOVER.html` — the non-technical handbook written for the Viraalay
+  team (also published as a shareable Artifact)
+
+---
+
+## 0. RESUME HERE — state at handover
+
+**The site is live and working.** Deployed on Railway, Webflow switched on,
+prices real, calendar correct, checkout working. Every fix below is deployed and
+was verified against the live site.
+
+### Two payments are unreconciled — deal with these first
+
+Both were taken while the callback was broken. **Check PayU for each and either
+refund it or create the reservation in Guesty by hand.**
+
+| Reference | Property | Dates | Amount | What happened |
+|---|---|---|---|---|
+| `VRL-PM6J95` | The Majestic Crown | 9–10 Nov 2026 | ₹7.08 | Callback 500'd on the CORS bug — never verified, no reservation |
+| `VRL-K28GNF` | The Majestic Crown | 19–20 Nov 2026 | ₹3.54 (shown ₹4) | Reverse hash mismatch — booking marked failed, guest told "no charge has been made", which was never established |
+
+### The one open engineering question
+
+**Why does PayU's reverse hash not match?** Unidentified. A live payment hit it
+on 2026-07-23. Payments are no longer lost to it — a mismatch now falls through
+to the authoritative server-to-server `verify_payment` — but the root cause is
+still open. The callback now logs the field names, `status`, and whether
+`additionalCharges` is present on mismatch. **One more live payment plus those
+logs should identify which hash variant this merchant account signs with.**
+Suspects worth checking in that order: `additionalCharges` prepending, salt v1
+vs v2, and the udf6–udf10 placeholder count.
+
+### Waiting on the client / not started
+
+1. **Hero search bar position** — the client wants to control it in Designer.
+   It cannot be, because three rules in the **head custom code** pin it with an
+   **ID selector** (which beats any Designer class) at a fixed `bottom` in px
+   (which is why it overlaps on some screens and sits too low on others).
+   Delete these three and Designer owns it:
+   - `#viraalay-hero-search{position:absolute;left:0;right:0;bottom:170px;display:flex;justify-content:center;padding:0 5%;z-index:20}`
+   - inside `@media(max-width:991px)`: `#viraalay-hero-search{bottom:130px}`
+   - inside `@media(max-width:767px)`: `#viraalay-hero-search{bottom:92px;padding:0 20px}`
+
+   Keep `.section_header_home{position:relative}`. Advise percentage offsets, not
+   px, so the bar keeps its relation to the heading. **The client was deciding
+   whether to make this edit themselves or have it done** — see the warning about
+   the head block in §8.
+2. **Guesty still has ₹3/night test rates on The Majestic Crown.** Restore real
+   rates before any further testing, or the figures look broken when they are not.
+3. **Nobody has confirmed Guesty's automated guest emails are switched on.** The
+   service sends no email at all. Until that is checked, a guest can pay and
+   receive nothing in writing. Flagged in the client handbook.
+
+### Smaller open items
+
+- Totals display as whole rupees while the exact paise is charged (₹4 shown,
+  ₹3.54 taken). Trivial at real prices, glaring at test rates. Not fixed.
+- The **ROOMS** selector in the booking box changes nothing — Guesty prices the
+  whole property. Hide it or relabel it.
+- Adding a destination city means editing the `DEST` array in the head code. The
+  commented-out `window.VIRAALAY_DESTINATIONS` override in the **footer does not
+  work** — the list is captured when the head script parses, long before the
+  footer runs. A CMS-driven version was designed but not built: the Locations
+  collection already has `city`, `state`, `display-order` and an auto-maintained
+  `property-count`, so it needs an endpoint plus a lazy read in the head widget.
+- Rooms are only bookable as separate Guesty listings (as BlueRoot already is).
+  A room picker inside one property page is a substantial build — Guesty's
+  reservation flow is one listing per reservation.
 
 ---
 
