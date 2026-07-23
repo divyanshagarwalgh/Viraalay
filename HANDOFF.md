@@ -409,12 +409,18 @@ without a quote, but it used to claim pricing was "still loading".
 - Container auto-restarts on crash (`restartPolicyType: ALWAYS`, set 2026-07-23)
   and never sleeps.
 
+- **Monitoring** — `.github/workflows/uptime.yml` checks `/health` and a real
+  Guesty-backed availability call every 15 minutes, and GitHub emails the repo
+  owner when it fails. It runs on **GitHub, not Railway**, on purpose: a monitor
+  inside the service cannot report that service being down, and a second Railway
+  service would eat the Hobby credit. Free — Actions minutes are unlimited on a
+  public repo. **GitHub disables scheduled workflows after 60 days with no repo
+  activity** (it emails first); any push re-arms it.
+
 **Still needs a human:**
 - **Billing.** Railway Hobby, $5/month included credit, overage on the card. A
-  failed card or exhausted credit stops the service. Nothing warns you.
-- **No monitoring or alerting anywhere.** If Guesty changes an API, or a token
-  fetch fails, pricing degrades silently — the 2026-07-23 outage was only caught
-  because somebody happened to look at the site.
+  failed card or exhausted credit stops the service. Nothing warns you — the
+  uptime check would fire once the service actually stopped, but not before.
 - **New Guesty listings arrive as Webflow drafts** and stay off the site until a
   human publishes them. Deliberate (review before publish), but it *is* manual.
 - **Refunds** — issue in the PayU dashboard and update the booking by hand.
