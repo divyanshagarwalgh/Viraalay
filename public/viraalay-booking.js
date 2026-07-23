@@ -202,20 +202,13 @@
   function readSelection() {
     var p = qs();
 
-    // Every one of these mirrors the same picker state, so the first that
-    // yields a date is authoritative: booking sidebar, mobile modal, hero bar.
-    var ci =
-      parseDate(textOf('#bk_ci')) ||
-      parseDate(textOf('#vm_ci')) ||
-      parseDate(textOf('#vh_ci')) ||
-      parseDate(textOf('#vbk_ci')) ||
-      parseDate(p.checkin);
-    var co =
-      parseDate(textOf('#bk_co')) ||
-      parseDate(textOf('#vm_co')) ||
-      parseDate(textOf('#vh_co')) ||
-      parseDate(textOf('#vbk_co')) ||
-      parseDate(p.checkout);
+    // "Select date" is an ANSWER, not a missing value. Choosing a new check-in
+    // clears the check-out on purpose, and falling back to the URL there would
+    // resurrect the old check-out — which made the page think a full stay was
+    // chosen after a single click, price the wrong nights, and skip the guest
+    // straight past choosing a check-out at all.
+    var ci = fromPicker(['#bk_ci', '#vm_ci', '#vh_ci', '#vbk_ci'], p.checkin);
+    var co = fromPicker(['#bk_co', '#vm_co', '#vh_co', '#vbk_co'], p.checkout);
 
     var children = int(p.children, 0);
     var infants = int(p.infants, 0);
@@ -242,6 +235,22 @@
   function textOf(sel) {
     var el = $(sel);
     return el ? el.textContent : '';
+  }
+
+  /**
+   * A date from the on-screen picker, falling back to the URL ONLY when there
+   * is no picker on the page at all — checkout and the listings page have none.
+   *
+   * The distinction that matters: a picker showing "Select date" has told us
+   * there is no date, and must not be overruled by a stale URL. Only the
+   * absence of the element itself means "we don't know, ask the URL".
+   */
+  function fromPicker(selectors, urlValue) {
+    for (var i = 0; i < selectors.length; i += 1) {
+      var el = $(selectors[i]);
+      if (el) return parseDate(el.textContent); // may be null — deliberately cleared
+    }
+    return parseDate(urlValue);
   }
 
   function int(v, d) {
