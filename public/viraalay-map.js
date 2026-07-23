@@ -196,12 +196,14 @@
         var parts = coordsRaw.split(',');
         var lat = parseFloat(parts[0]);
         var lng = parseFloat(parts[1]);
+        // Build each property URL from the bound slug node — a Collection List
+        // item link to the template page resolves to "/properties", not the
+        // item, so fix the card's own href too.
         var link = el.matches('a') ? el : el.querySelector('a');
-        var url = link ? link.getAttribute('href') || '#' : '#';
-        var slug =
-          el.getAttribute('data-slug') ||
-          (url && url.indexOf('/') > -1 ? url.split('/').filter(Boolean).pop() : '') ||
-          'p' + i;
+        var slugText = textOf(el, '.map_card-slug');
+        var slug = slugText || el.getAttribute('data-slug') || 'p' + i;
+        var url = slugText ? '/properties/' + slugText : (link ? link.getAttribute('href') || '#' : '#');
+        if (link && slugText) link.setAttribute('href', url);
         var img = el.querySelector('.map_card-image');
         return {
           el: el,
