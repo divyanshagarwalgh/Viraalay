@@ -201,11 +201,30 @@ async function createQuote({
   };
   if (coupons) body.couponCode = coupons;
 
-  return call('openApi', '/quotes', {
-    method: 'POST',
-    body,
-    label: 'Guesty create quote',
-  });
+  try {
+    return await call('openApi', '/quotes', {
+      method: 'POST',
+      body,
+      label: 'Guesty create quote',
+    });
+  } catch (err) {
+    // Sold-out or blocked dates are the single most common quote failure, and
+    // Guesty reports them as a generic 400 "Listing is not available or is not
+    // active". Left alone that surfaces as upstream_error, which the front end
+    // renders as "we could not price these dates just now, please try again" —
+    // telling a guest to retry something that will never succeed, and leaking
+    // Guesty's raw payload (including its requestId) to the browser.
+    // Re-map to the 422 the front end already understands.
+    const raw = String(err && err.message ? err.message : '');
+    if (err && err.status === 400 && /not available|not active/i.test(raw)) {
+      throw httpError(
+        422,
+        'not_available',
+        'Those dates are not available for this home.'
+      );
+    }
+    throw err;
+  }
 }
 
 async function getQuote(quoteId) {
