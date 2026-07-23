@@ -36,8 +36,9 @@ verified on the published site on 2026-07-23. No booking has been paid for yet.
 | Service deployed | ✅ **2026-07-23** — Railway project `Viraalay`, `https://viraalay-production.up.railway.app`, latest commit `1b0f2c3` deployed SUCCESS |
 | `apiBase` set in Webflow footer | ✅ **2026-07-23** — set to the Railway URL and published; engine loads on the live site |
 | Guest path verified live | ✅ **2026-07-23** — property page → live quote (₹17,818, Majestic Crown 14–17 Aug, 4 guests) → `/checkout` carrying everything; zero console errors |
-| Webhooks registered | ❌ **not done** — `PUBLIC_BASE_URL` now points at Railway, so `npm run register-webhooks` is ready to run |
-| Sync scheduled every 6h | ❌ **not done** |
+| Webhooks registered | ✅ **2026-07-23** — Guesty subscription `6a61a8079eaaf2001a871b57` (6 events) + 2 Webflow triggers; a `reservation.created.v2` hook arrived and was handled within seconds |
+| Sync scheduled every 6h | ✅ **2026-07-23** — in-process in `src/server.js`; log says `[sync] scheduled every 6h` |
+| Auto-deploy from GitHub | ❌ **OFF** — pushing to `main` ships nothing. Deploy from the Railway dashboard or via the Railway MCP after every push |
 | Live test booking | ❌ **not done** — Part 9, charges a real card |
 | "Book Now" button binding | ✅ **fixed 2026-07-23** — was matching nothing; verified end-to-end against live Guesty (see §8) |
 
@@ -91,6 +92,21 @@ directly to money.
    will burn the quota and take the engine offline. Use an always-on host, or
    set `UPSTASH_REDIS_REST_URL` + `_TOKEN` so `src/lib/token-store.js` shares the
    token across invocations.
+
+   **Always-on is not enough on its own — every DEPLOY costs a token.** The file
+   cache lives in the container temp dir, which Railway wipes on each deploy, so
+   a restart looks exactly like a cold start. Three deploys inside an hour on
+   2026-07-23 exhausted the quota and `/api/quote` returned 429 for the rest of
+   the window. Two defences, both now in the code:
+   - `TOKEN_CACHE_DIR` — point it at a **mounted Railway volume** so the cached
+     token survives deploys. Without this, budget deploys against the 5/day.
+   - `GUESTY_OPENAPI_ACCESS_TOKEN` + `GUESTY_OPENAPI_EXPIRES_AT` (epoch ms) —
+     paste in a token you already hold and the service will not ask for another.
+     The escape hatch when the quota is already spent. Read-only; clearing the
+     vars returns to the normal flow.
+
+   A valid token normally sits in `%TEMP%\viraalay-token-openApi.json` on the
+   machine that last ran a script — that is where to get a value to seed with.
 
 4. **The PayU credentials are LIVE, not test.** Probed: `info.payu.in` accepted
    the hash; `test.payu.in` returned "Invalid Hash." `PAYU_MODE=live` is
@@ -245,6 +261,14 @@ any depth, adding `span`, then resolving up via `closest('a, button')`.
 candidate would bind four handlers to the same anchor and fire checkout 4×.
 Any future Designer restyle of this button should be re-tested against it.
 
+**Guesty webhooks take one subscription per URL with an `events` ARRAY**, not one
+subscription per event — posting `{ event }` returns 400 "events are required",
+so the original registration script had never worked. `reservation.new` /
+`reservation.updated` are also deprecated now; Guesty names
+`reservation.created.v2` / `reservation.updated.v2` as the replacements. The v2
+payloads carry the event name in `eventType` and nest the reservation somewhere
+other than `body.reservation`, so `src/routes/hooks.js` probes several shapes.
+
 **Ratings mapping** — Airbnb has no *meals* category, so Meals rating mirrors
 the overall score rather than inventing a number. clean ← cleanliness,
 staff ← communication + checkin, experience ← accuracy + value.
@@ -260,29 +284,32 @@ touches real ones.
 
 ### A. Finish the go-live runbook
 
-`DEPLOY.md` Parts 1–6 are **done** (deployed, env set, site switched on, guest
-path verified). Remaining, in order:
+`DEPLOY.md` Parts 1–8 are **done** — deployed, env set, site switched on, guest
+path verified, webhooks registered, sync scheduled. What is left:
 
-1. **Part 7 — `npm run register-webhooks`.** `PUBLIC_BASE_URL` in `.env` was
-   pointed at the Railway URL on 2026-07-23, so the script's localhost guard no
-   longer blocks it. Registers 6 Guesty + 2 Webflow subscriptions; idempotent.
-2. **Part 8 — schedule the sync** every 6 hours:
-   `GET https://viraalay-production.up.railway.app/api/sync/listings?token=SYNC_SECRET`
-   (cron-job.org, or a Railway cron service on `0 */6 * * *`).
-3. **Part 9 — one real booking.** Lakecity, ₹5,000/night, one night, then refund
-   from the PayU dashboard. This charges a real card.
+1. **Part 9 — one real booking.** Lakecity, ₹5,000/night, one night, then refund
+   from the PayU dashboard. This charges a real card. Nothing else can prove the
+   PayU leg, because PayU has no usable test mode with these credentials.
+2. **The sidebar price duplicate was fixed** 2026-07-23 (see A2), but the
+   **checkout still shows placeholder cancellation copy** — "Cancellation terms
+   for this home will appear here." The Open API quote returns
+   `cancellationPolicy: null`, so nothing fills it. Either map the Cancellation
+   Policies collection by property or drop the block.
 
-### A2. Two UI issues found during the 2026-07-23 live verification
+### A2. Fixed 2026-07-23 — the sidebar showed two different totals
 
-- **The property sidebar shows two different totals.** The CMS static price block
-  ("Total (Incl. taxes) ₹14,998 for 2 nights") renders *above* the live quote
-  panel, which for the same stay says ₹17,818. A guest sees the stale figure
-  first. Either hide the static block once a live quote renders, or move the
-  quote panel above it.
-- **Checkout shows placeholder cancellation copy** — "Cancellation terms for this
-  home will appear here." The Open API quote returns `cancellationPolicy: null`,
-  so nothing fills it. Either map the Cancellation Policies collection by
-  property or drop the block.
+The CMS static price card ("Total (Incl. taxes) ₹14,998 for 2 nights") rendered
+*above* the live quote panel, which for the same stay said ₹17,818 — the stale
+figure read first. `public/viraalay-booking.js` now hides that card and its
+divider once a real quote lands, and moves the quote panel up into the slot it
+vacated so the price still sits above the Book Now row. The card comes back
+whenever there is no live quote (no dates, unavailable dates, API error, engine
+off), so the sidebar is never priceless.
+
+The card is matched **by text** (`/total/i` plus a figure) because every block in
+that column is an identically-classed `.booking_content`. If the Designer copy
+changes so nothing matches, the panel renders where it already is and only the
+duplicate returns — it fails soft, but re-test after any sidebar restyle.
 
 ### B. Three Designer-only tasks (Data API cannot do these)
 
