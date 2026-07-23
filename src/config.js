@@ -98,6 +98,9 @@ const config = {
   },
 
   syncSecret: opt('SYNC_SECRET'),
+  // Hours between automatic Guesty -> Webflow syncs. 0 disables the in-process
+  // scheduler, for when an external cron owns the job instead.
+  syncIntervalHours: Number(opt('SYNC_INTERVAL_HOURS', '6')),
   port: Number(opt('PORT', '3000')),
 };
 
