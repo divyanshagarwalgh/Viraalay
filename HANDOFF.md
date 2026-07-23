@@ -300,6 +300,33 @@ number**: the rupee sign is a sibling element, and the field carries
 `fs-list-fieldtype="number"` for Finsweet's price sort and range filters, so a
 formatted string renders "₹ ₹5,500" and breaks both.
 
+**`prices.basePrice` is not what anyone pays.** This account runs PriceOptimizer,
+so the calendar holds the real rates and basePrice is a vestigial default —
+18016 vs a 90-day calendar of 5000–9749 on The Royal Crown. The sync now writes
+the **lowest available nightly rate over the next 90 days** into the CMS `price`
+field (`lowestNightlyRate()`), so the home page and any non-dated card advertise
+a figure somebody could really book, with no client-side patching. Blocked dates
+are excluded — a rate you cannot book is not a "from" price.
+
+**THE WEBHOOKS CLOSED A WRITE LOOP.** `pushPropertyToGuesty` pushed title and
+summary on every Webflow event regardless of whether they had changed: a Webflow
+write fired `collection_item_changed` → push to Guesty → Guesty fired
+`listing.updated` → Guesty→Webflow sync → another Webflow write → round two.
+Observed live 2026-07-23 running flat out until it exhausted Webflow's
+60-a-minute budget, which also starved every other write. The tell was a PATCH
+returning the new value and a GET seconds later returning the old one. It now
+compares against Guesty before writing, so the second hop finds nothing to do.
+**Any future Webflow→Guesty push must be a no-op when nothing differs.**
+
+**Webflow 429s are back-pressure, not failure.** `webflow.api()` backs off
+2/4/8/16/32s. Before that a long sync silently dropped listings — one run
+reported eleven.
+
+**`npm run sync` is dry by default and needs `--confirm`.** It used to write
+unless you passed `--dry-run`, and PowerShell swallows the bare `--` separator,
+so the flag never arrived and a "dry run" wrote for real. Prefer
+`node scripts/sync-once.js --confirm` on Windows.
+
 **`/assets` is served with `Cache-Control: max-age=300`.** Browsers hold the
 booking script for five minutes, so a just-deployed fix will not appear on a
 reload inside that window — check `performance.getEntriesByType('resource')`
