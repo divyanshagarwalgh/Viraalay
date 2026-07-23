@@ -321,7 +321,18 @@ If the sidebar stays empty, see Troubleshooting below.
 
 ---
 
-## Part 7 — Register the webhooks
+## Part 7 — Register the webhooks ✅ DONE 2026-07-23
+
+> Already run. One Guesty subscription (`6a61a8079eaaf2001a871b57`) covering all
+> six events, plus `collection_item_changed` and `collection_item_created` on
+> Webflow. Re-running is safe and will report them as already registered.
+>
+> Two things had to be fixed first, both now in the code:
+> - Guesty wants **one subscription per URL with an `events` array**, not one per
+>   event. The old per-event payload returned 400 "events are required" — it had
+>   never worked.
+> - `reservation.new` / `reservation.updated` are **deprecated**; Guesty names
+>   `reservation.created.v2` / `reservation.updated.v2` as the replacements.
 
 These keep Webflow in step with Guesty when listings, calendars or reservations
 change. Run from your machine, not the server.
@@ -346,9 +357,9 @@ npm run register-webhooks
 ```
 
 It registers Guesty `listing.new/updated/removed`,
-`listing.calendar.updated`, `reservation.new/updated`, and Webflow
-`collection_item_changed/created`. Safe to re-run — it skips anything already
-registered.
+`listing.calendar.updated`, `reservation.created.v2`, `reservation.updated.v2`,
+and Webflow `collection_item_changed/created`. Safe to re-run — it skips
+anything already registered.
 
 > The script refuses to run if `PUBLIC_BASE_URL` still contains `localhost`.
 > That guard is deliberate.
@@ -358,28 +369,32 @@ registered.
 
 ---
 
-## Part 8 — Schedule the sync
+## Part 8 — Schedule the sync ✅ DONE 2026-07-23
 
 Belt-and-braces alongside the webhooks; catches anything a dropped webhook
 misses. Every 6 hours is right.
 
-**Easiest — cron-job.org (free):** create a job hitting
+**The service now schedules itself.** `src/server.js` runs the sync every
+`SYNC_INTERVAL_HOURS` hours (default 6) in-process, logging
+`[sync] scheduled run complete` with the report each time. Nothing to set up.
+
+This replaced the external-cron plan below: a second Railway service or a
+cron-job.org entry would mean another deployment to keep alive and the sync
+secret sitting in a third party's job config, for identical work.
+
+To hand the job back to an external cron, set `SYNC_INTERVAL_HOURS=0` on the
+service and schedule one of these every 6 hours:
 
 ```
-https://YOUR-URL/api/sync/listings?token=YOUR_SYNC_SECRET
+https://viraalay-production.up.railway.app/api/sync/listings?token=YOUR_SYNC_SECRET
 ```
 
-every 6 hours.
-
-**Or Railway native:** add a Cron service in the project with schedule
-`0 */6 * * *` running:
-
-```bash
-curl.exe -s "https://YOUR-URL/api/sync/listings?token=YOUR_SYNC_SECRET"
-```
-
-Verify it works by running that URL once by hand — it should return a JSON
+That endpoint stays available either way for manual runs — it returns a JSON
 summary of listings created/updated/skipped.
+
+> **Auto-deploy from GitHub is OFF for this service** (confirmed 2026-07-23).
+> Pushing to `main` does **not** ship anything. Deploy from the Railway
+> dashboard, or `railway up`, after every push.
 
 ---
 

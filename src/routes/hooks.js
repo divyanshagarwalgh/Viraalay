@@ -51,7 +51,20 @@ router.post(
           // copy into the CMS. Logged for traceability only.
           console.log(`[hook:guesty] calendar event for ${listingId || 'multiple listings'}`);
         } else if (/reservation/i.test(event)) {
-          console.log(`[hook:guesty] ${event}`, JSON.stringify(req.body?.reservation?._id || ''));
+          // The v2 payloads do not put the reservation where the legacy ones
+          // did, so try the known shapes and fall back to naming the top-level
+          // keys — an empty log line here is useless when a real booking lands.
+          const body = req.body || {};
+          const reservationId =
+            body.reservation?._id ||
+            body.data?.reservation?._id ||
+            body.payload?.reservation?._id ||
+            body.data?._id ||
+            body.reservationId ||
+            null;
+          console.log(
+            `[hook:guesty] ${event} ${reservationId || `(no id; keys: ${Object.keys(body).join(',')})`}`
+          );
         } else {
           console.log(`[hook:guesty] unhandled event ${event}`);
         }
