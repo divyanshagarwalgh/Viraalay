@@ -55,12 +55,24 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // The front-end bundle the Webflow site loads.
+//
+// Revalidate on every load rather than caching for a fixed window. This file
+// carries the pricing, calendar and checkout behaviour, and the URL never
+// changes, so a cached copy is a guest running last week's logic — a five
+// minute window meant a payment or pricing fix reached nobody until it expired.
+// ETag makes the revalidation a 304 in the normal case, so the cost is a
+// conditional request rather than the 54KB body.
 app.use(
   '/assets',
   express.static(path.join(__dirname, '..', 'public'), {
-    maxAge: '5m',
+    etag: true,
+    maxAge: 0,
     setHeaders(res) {
       res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+      // Lets the browser report real transfer sizes cross-origin, so "is this
+      // cached?" is answerable when diagnosing a fix that appears not to land.
+      res.setHeader('Timing-Allow-Origin', '*');
     },
   })
 );
