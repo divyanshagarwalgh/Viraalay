@@ -311,6 +311,17 @@ that column is an identically-classed `.booking_content`. If the Designer copy
 changes so nothing matches, the panel renders where it already is and only the
 duplicate returns — it fails soft, but re-test after any sidebar restyle.
 
+**The quote panel is hidden in the Designer, and that was swallowing every
+failure message.** Measured live: computed `display:none`, with
+"We could not price these dates" written inside it. So when pricing broke the
+guest saw only the CMS card — a fixed figure "for 2 nights" that disagrees with
+whatever dates were chosen — and no sign anything was wrong. `showPanelWithoutPrice()`
+now forces the panel visible for anything the guest must read and clears stale
+line items; the failed-quote branch also hides the CMS card, since a price for
+the wrong number of nights is worse than no price. On checkout a failed quote
+now dims **PAY SECURELY** to "Pricing unavailable" — `pay()` always refused
+without a quote, but it used to claim pricing was "still loading".
+
 ### B. Three Designer-only tasks (Data API cannot do these)
 
 1. **Rebuild the FAQ section on the property template.** Deleting `Q1…Q9`
