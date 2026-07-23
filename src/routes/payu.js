@@ -39,11 +39,31 @@ router.post(
       return redirectTo(res, config.failurePath, { reason: 'no_reference' });
     }
 
-    // 1. Reverse hash.
-    if (!payu.verifyResponseHash(body)) {
-      console.error('[payu] reverse hash mismatch', { reference, txnid });
-      await safeMarkFailed(reference, 'hash_mismatch', body);
-      return redirectTo(res, config.failurePath, { ref: reference, reason: 'invalid_signature' });
+    // 1. Reverse hash — evidence this POST really came from PayU.
+    //
+    // A mismatch is NOT evidence the payment failed, and it used to be treated
+    // as such: the booking was marked failed and the guest was told "no charge
+    // has been made", which nobody had established. The authoritative check is
+    // the server-to-server verify_payment below — it is strictly stronger than
+    // a hash on a browser-posted form, because it asks PayU directly over a
+    // channel the browser cannot touch.
+    //
+    // So a bad hash downgrades this response to "unattributed" rather than
+    // ending the booking: we stop trusting anything the POST claims and go ask
+    // PayU. The consequences are handled at each use below.
+    const hashOk = payu.verifyResponseHash(body);
+    if (!hashOk) {
+      console.error('[payu] reverse hash mismatch — falling back to server-to-server verification', {
+        reference,
+        txnid,
+        // Enough to diagnose the formula without logging guest details: which
+        // fields arrived, and whether the response carries the extras that
+        // change the hash sequence.
+        fields: Object.keys(body).sort().join(','),
+        status: body.status,
+        hasAdditionalCharges: Boolean(body.additionalCharges),
+        receivedHashLength: String(body.hash || '').length,
+      });
     }
 
     const booking = await store.findByReference(reference);
@@ -57,8 +77,11 @@ router.post(
       return redirectTo(res, config.successPath, { ref: reference });
     }
 
+    // Only act on a declared failure when we know PayU sent it. Otherwise a
+    // forged POST could cancel somebody's booking, and — more likely here — a
+    // hash quirk could throw away a payment that actually went through.
     const declared = String(body.status || '').toLowerCase();
-    if (declared !== 'success') {
+    if (hashOk && declared !== 'success') {
       await store.update(reference, {
         bookingStatus: store.STATUS.FAILED,
         paymentStatus: store.PAYMENT.FAILED,
