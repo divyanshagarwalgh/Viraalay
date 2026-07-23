@@ -13,7 +13,14 @@ name: Booking engine health
 
 on:
   schedule:
+    # BEST EFFORT ONLY. GitHub documents that scheduled workflows can be delayed
+    # or dropped under load — this one did not fire for its first 35 minutes. Fine
+    # as a free safety net; do not treat a silent hour as proof the site is up.
     - cron: '*/15 * * * *'
+  push:
+    # Deploys are manual (Railway auto-deploy is off), so running the same checks
+    # on every push to main doubles as a smoke test of what was just shipped.
+    branches: [main]
   workflow_dispatch: # lets you run it by hand from the Actions tab
 
 permissions:
