@@ -29,7 +29,9 @@ router.post(
   asyncRoute(async (req, res) => {
     requireToken(req, config.guesty.webhookToken, 'GUESTY_WEBHOOK_TOKEN');
 
-    const event = req.body?.event || req.body?.type || 'unknown';
+    // v2 reservation events name the field `eventType`; the listing events use
+    // `event`. Both still match the /listing|calendar|reservation/ dispatch below.
+    const event = req.body?.event || req.body?.eventType || req.body?.type || 'unknown';
     const listingId =
       req.body?.listing?._id ||
       req.body?.listingId ||

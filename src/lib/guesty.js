@@ -453,10 +453,15 @@ async function listWebhooks() {
   return call('openApi', '/webhooks', { label: 'Guesty list webhooks' });
 }
 
-async function createWebhook({ event, url, secret }) {
+/**
+ * Guesty takes ONE subscription per URL carrying an `events` array — not one
+ * subscription per event. Posting `{ event }` returns 400 "events are required".
+ */
+async function createWebhook({ events, url, secret }) {
+  const list = Array.isArray(events) ? events : [events];
   return call('openApi', '/webhooks', {
     method: 'POST',
-    body: { event, url, ...(secret ? { secret } : {}) },
+    body: { events: list, url, ...(secret ? { secret } : {}) },
     label: 'Guesty create webhook',
   });
 }

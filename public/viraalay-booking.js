@@ -363,6 +363,8 @@
       this.reserveEl = $('[data-vbk-reserve]');
       this.perNightEl = $('[data-vbk-pernight]');
 
+      this.findStaticPrice();
+
       this.loadAvailability(id);
       this.watch();
       this.refresh();
@@ -453,6 +455,66 @@
       }, 600);
     },
 
+    /**
+     * The property sidebar carries the CMS's own price card — a nightly rate
+     * copied from the collection, e.g. "Total (Incl. taxes) ₹14,998 for 2
+     * nights". That figure is static: it ignores the guest's dates, the season
+     * and the tax actually quoted, so once a live Guesty quote is on screen the
+     * two contradict each other and the stale one reads first.
+     *
+     * Found by text rather than by class because every block in the sidebar is
+     * an identically-classed `.booking_content`. If the Designer copy changes
+     * and nothing matches, the quote panel simply renders where it already is —
+     * the sidebar stays correct, just with the old duplicate visible.
+     */
+    findStaticPrice: function () {
+      if (!this.panel) return;
+      var wrap = this.panel.parentNode;
+      if (!wrap) return;
+
+      var self = this;
+      var kids = [].slice.call(wrap.children);
+      var block = null;
+
+      kids.forEach(function (el) {
+        if (block || el === self.panel || el.contains(self.panel)) return;
+        var txt = (el.textContent || '').replace(/\s+/g, ' ');
+        // A price card, not the coupon row: says "total" AND carries a figure.
+        if (/total/i.test(txt) && /[\d,]{3,}/.test(txt)) block = el;
+      });
+      if (!block) return;
+
+      this.staticPrice = block;
+      // Sidebar blocks are separated by `.divider_property`; hiding the block
+      // without its divider leaves a stray rule floating in the gap.
+      var next = block.nextElementSibling;
+      this.staticDivider = next && /divider/i.test(next.className || '') ? next : null;
+    },
+
+    /** Live quote wins: hide the stale card and take its place in the column. */
+    hideStaticPrice: function () {
+      if (!this.staticPrice || this.staticSwapped) return;
+      this.staticPrice.style.display = 'none';
+      if (this.staticDivider) this.staticDivider.style.display = 'none';
+      // Move the panel up into the slot the stale card occupied, so the price
+      // still sits above the Book Now row rather than below it.
+      if (this.panel && this.panel.parentNode === this.staticPrice.parentNode) {
+        this.staticPrice.parentNode.insertBefore(this.panel, this.staticPrice);
+      }
+      this.staticSwapped = true;
+    },
+
+    /**
+     * No live quote — unavailable dates, an API error, the engine switched off.
+     * Put the CMS card back so the sidebar is never priceless.
+     */
+    restoreStaticPrice: function () {
+      if (!this.staticPrice || !this.staticSwapped) return;
+      this.staticPrice.style.display = '';
+      if (this.staticDivider) this.staticDivider.style.display = '';
+      this.staticSwapped = false;
+    },
+
     refresh: function () {
       var id = listingId();
       var sel = readSelection();
@@ -462,6 +524,7 @@
         text(this.statusEl, 'Select your dates to see the total for your stay.');
         text(this.totalEl, '');
         if (this.reserveEl) this.reserveEl.setAttribute('data-vbk-state', 'needs-dates');
+        this.restoreStaticPrice();
         return;
       }
 
@@ -470,6 +533,7 @@
         text(this.statusEl, 'This home has a ' + minNights + '-night minimum stay.');
         text(this.totalEl, '');
         if (this.reserveEl) this.reserveEl.setAttribute('data-vbk-state', 'min-nights');
+        this.restoreStaticPrice();
         return;
       }
 
@@ -498,6 +562,7 @@
           // site's own price card while the engine is idle. Reveal it only
           // once there is a real, live-priced quote to show.
           if (self.panel) self.panel.style.display = 'block';
+          self.hideStaticPrice();
           renderRows(self.rows, quote);
           text(self.totalEl, money(quote.total, quote.currency));
           text(self.perNightEl, money(quote.perNight, quote.currency) + ' / night');
@@ -516,6 +581,7 @@
               : 'We could not price these dates just now. Please try again.'
           );
           if (self.reserveEl) self.reserveEl.setAttribute('data-vbk-state', 'error');
+          self.restoreStaticPrice();
         });
     },
 

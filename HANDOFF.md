@@ -1,6 +1,6 @@
 # Viraalay booking engine — HANDOFF
 
-**Read this first when resuming.** Last updated 2026-07-22.
+**Read this first when resuming.** Last updated 2026-07-23.
 
 Companion docs in this repo:
 - `README.md` — architecture, API reference, security model, credential rotation
@@ -17,9 +17,9 @@ automatic reservation creation in Guesty, and a Guesty → Webflow CMS sync.
 
 All guest-facing UI is **native Webflow**. This service holds the credentials.
 
-**Status: built, credentialed, tested against the live Guesty account, CMS fully
-populated and published. NOT deployed.** Deployment is the only remaining
-engineering task and needs a hosting account.
+**Status: LIVE.** Deployed to Railway, the Webflow site is switched on and
+published, and the whole guest path — live Guesty pricing → checkout — was
+verified on the published site on 2026-07-23. No booking has been paid for yet.
 
 ---
 
@@ -33,10 +33,12 @@ engineering task and needs a hosting account.
 | Sync (Guesty → Webflow) | ✅ run, idempotent (3rd run skipped all 16) |
 | CMS content | ✅ 16 real properties, all fields populated, published |
 | Reviews / FAQs / Rooms | ✅ 50 reviews, 190 FAQs, 61 rooms |
-| Service deployed | ❌ **not done** — see `DEPLOY.md` |
-| `apiBase` set in Webflow footer | ❌ **not done** — booking engine is idle until then |
-| Webhooks registered | ❌ **not done** — needs a public URL first |
-| Live test booking | ❌ **not done** |
+| Service deployed | ✅ **2026-07-23** — Railway project `Viraalay`, `https://viraalay-production.up.railway.app`, latest commit `1b0f2c3` deployed SUCCESS |
+| `apiBase` set in Webflow footer | ✅ **2026-07-23** — set to the Railway URL and published; engine loads on the live site |
+| Guest path verified live | ✅ **2026-07-23** — property page → live quote (₹17,818, Majestic Crown 14–17 Aug, 4 guests) → `/checkout` carrying everything; zero console errors |
+| Webhooks registered | ❌ **not done** — `PUBLIC_BASE_URL` now points at Railway, so `npm run register-webhooks` is ready to run |
+| Sync scheduled every 6h | ❌ **not done** |
+| Live test booking | ❌ **not done** — Part 9, charges a real card |
 | "Book Now" button binding | ✅ **fixed 2026-07-23** — was matching nothing; verified end-to-end against live Guesty (see §8) |
 
 ---
@@ -256,15 +258,31 @@ touches real ones.
 
 ## 9. What is left
 
-### A. Deploy — the only engineering work
+### A. Finish the go-live runbook
 
-Follow `DEPLOY.md`. Summary:
-1. Deploy to an **always-on** host (Railway / Render paid / Fly / VPS).
-2. Set env vars from `.env` (do not commit it).
-3. Put the URL into `window.VIRAALAY_BOOKING.apiBase` in the Webflow footer, publish.
-4. `npm run register-webhooks`.
-5. Schedule `GET /api/sync/listings?token=SYNC_SECRET` every 6 hours.
-6. Do one low-value real booking (Lakecity, ₹5,000/night) and refund it.
+`DEPLOY.md` Parts 1–6 are **done** (deployed, env set, site switched on, guest
+path verified). Remaining, in order:
+
+1. **Part 7 — `npm run register-webhooks`.** `PUBLIC_BASE_URL` in `.env` was
+   pointed at the Railway URL on 2026-07-23, so the script's localhost guard no
+   longer blocks it. Registers 6 Guesty + 2 Webflow subscriptions; idempotent.
+2. **Part 8 — schedule the sync** every 6 hours:
+   `GET https://viraalay-production.up.railway.app/api/sync/listings?token=SYNC_SECRET`
+   (cron-job.org, or a Railway cron service on `0 */6 * * *`).
+3. **Part 9 — one real booking.** Lakecity, ₹5,000/night, one night, then refund
+   from the PayU dashboard. This charges a real card.
+
+### A2. Two UI issues found during the 2026-07-23 live verification
+
+- **The property sidebar shows two different totals.** The CMS static price block
+  ("Total (Incl. taxes) ₹14,998 for 2 nights") renders *above* the live quote
+  panel, which for the same stay says ₹17,818. A guest sees the stale figure
+  first. Either hide the static block once a live quote renders, or move the
+  quote panel above it.
+- **Checkout shows placeholder cancellation copy** — "Cancellation terms for this
+  home will appear here." The Open API quote returns `cancellationPolicy: null`,
+  so nothing fills it. Either map the Cancellation Policies collection by
+  property or drop the block.
 
 ### B. Three Designer-only tasks (Data API cannot do these)
 

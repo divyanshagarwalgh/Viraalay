@@ -13,13 +13,18 @@ const { config } = require('../src/config');
 const guesty = require('../src/lib/guesty');
 const webflow = require('../src/lib/webflow');
 
+/**
+ * `reservation.new` / `reservation.updated` are DEPRECATED — Guesty rejects them
+ * with a 400 naming `reservation.created.v2` / `reservation.updated.v2` as the
+ * replacements. Verified live 2026-07-23.
+ */
 const GUESTY_EVENTS = [
   'listing.new',
   'listing.updated',
   'listing.removed',
   'listing.calendar.updated',
-  'reservation.new',
-  'reservation.updated',
+  'reservation.created.v2',
+  'reservation.updated.v2',
 ];
 
 async function main() {
@@ -41,17 +46,24 @@ async function main() {
     console.warn('Could not list existing Guesty webhooks:', err.message);
   }
 
-  for (const event of GUESTY_EVENTS) {
-    const already = existing.find((w) => w.event === event && w.url === guestyUrl);
-    if (already) {
-      console.log(`  = ${event} already registered`);
-      continue;
+  // One subscription per URL, carrying every event — that is the shape Guesty
+  // wants. Re-running finds the existing subscription by URL and leaves it be.
+  const already = existing.find((w) => w.url === guestyUrl);
+  if (already) {
+    const covered = already.events || already.event || [];
+    console.log(`  = already registered (${[].concat(covered).join(', ') || 'no events listed'})`);
+    const missing = GUESTY_EVENTS.filter((e) => ![].concat(covered).includes(e));
+    if (missing.length) {
+      console.warn(`  ! subscription is missing: ${missing.join(', ')}`);
+      console.warn('    Delete it in Guesty and re-run, or add the events by hand.');
     }
+  } else {
     try {
-      await guesty.createWebhook({ event, url: guestyUrl });
-      console.log(`  + ${event}`);
+      const created = await guesty.createWebhook({ events: GUESTY_EVENTS, url: guestyUrl });
+      console.log(`  + ${GUESTY_EVENTS.join(', ')}`);
+      if (created && created._id) console.log(`    id ${created._id}`);
     } catch (err) {
-      console.error(`  ! ${event}: ${err.message}`);
+      console.error(`  ! create failed: ${err.message}`);
     }
   }
 
