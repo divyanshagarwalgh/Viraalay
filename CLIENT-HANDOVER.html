@@ -563,7 +563,7 @@
       <!-- 5 -->
       <section id="s5">
         <h2><span class="n">05</span>How long changes take</h2>
-        <p>Some things appear the second you save them. Others are copied across on a six-hourly cycle. Knowing which is which saves a lot of worrying.</p>
+        <p>Anything a guest is actually quoted is fetched from Guesty live, so it is never out of date. Browsing-page summaries are copied across instead, and arrive a few minutes behind. Knowing which is which saves a lot of worrying.</p>
 
         <div class="tablewrap">
           <table>
@@ -572,14 +572,15 @@
               <tr><td>Rate change in Guesty</td><td class="num">Immediately</td><td>Prices for chosen dates are asked of Guesty on every page view</td></tr>
               <tr><td>Blocking or freeing dates</td><td class="num">Immediately</td><td>The calendar is read live</td></tr>
               <tr><td>A new booking anywhere</td><td class="num">Immediately</td><td>Those dates stop being offered at once</td></tr>
-              <tr><td>"From" price on homepage cards</td><td class="num">Within 6 hours</td><td>Copied into the website on a schedule</td></tr>
-              <tr><td>Property name, description, capacity</td><td class="num">Within 6 hours</td><td>Same schedule (often much faster)</td></tr>
-              <tr><td>A brand-new villa added to Guesty</td><td class="num">Within 6 hours, then needs publishing</td><td>Arrives as a draft so you can check it first</td></tr>
+              <tr><td>"From" price on homepage cards</td><td class="num">A few minutes</td><td>Guesty tells the website the moment rates change; it waits ~3 min in case you're mid-edit</td></tr>
+              <tr><td>Property name, description, capacity</td><td class="num">Seconds</td><td>Guesty notifies the website immediately</td></tr>
+              <tr><td>A brand-new villa added to Guesty</td><td class="num">Minutes, then needs publishing</td><td>Arrives as a draft so you can check it first</td></tr>
               <tr><td>Anything you edit in Webflow</td><td class="num">When you press Publish</td><td>Normal Webflow behaviour</td></tr>
             </tbody>
           </table>
         </div>
         <p>You do <b>not</b> need to publish the Webflow site for Guesty changes to show. The system publishes those itself.</p>
+        <p>Underneath, two things keep the site current. Guesty <b>tells</b> the website whenever something changes, which handles almost everything within a minute or two. Separately, a full sweep runs <b>every six hours</b> as a safety net, in case a notification is ever missed. So six hours is the worst case if something goes astray, not the normal wait.</p>
       </section>
 
       <!-- 6 -->
@@ -589,7 +590,7 @@
         <h3>Adding a new villa</h3>
         <ol class="plain">
           <li>Create and activate the listing in Guesty as you normally would, with photos, rates and calendar.</li>
-          <li>Within six hours it appears in Webflow under <b>Properties</b> as an unpublished draft.</li>
+          <li>Within a few minutes it appears in Webflow under <b>Properties</b> as an unpublished draft.</li>
           <li>Open it, check the description and photos read well, add anything missing.</li>
           <li>Publish the item. It's now on the website.</li>
         </ol>
@@ -709,7 +710,7 @@
               </tr>
               <tr>
                 <td>Prices look wrong or out of date on cards</td>
-                <td>The six-hourly copy hasn't run yet</td>
+                <td>The copy hasn't caught up yet</td>
                 <td>Wait. The price a guest is actually charged comes live from Guesty and is always correct</td>
               </tr>
               <tr>
@@ -794,7 +795,7 @@
         <div class="faq">
           <details>
             <summary>If I change a price in Guesty, do I need to do anything on the website?</summary>
-            <div class="answer"><p>No. A guest choosing dates gets a price fetched from Guesty at that moment. The "from" price on homepage cards catches up within six hours on its own.</p></div>
+            <div class="answer"><p>No. A guest choosing dates gets a price fetched from Guesty at that moment — that is always current, with no delay at all. The "from" price on homepage cards catches up on its own a few minutes later.</p></div>
           </details>
           <details>
             <summary>Do I need to press Publish in Webflow after changing something in Guesty?</summary>
@@ -806,7 +807,15 @@
           </details>
           <details>
             <summary>What if someone edits a price in Webflow by mistake?</summary>
-            <div class="answer"><p>No harm to guests — they're always charged the live Guesty price. The website will correct itself within six hours.</p></div>
+            <div class="answer"><p>No harm to guests — they're always charged the live Guesty price. The website corrects itself the next time anything changes on that property, and in any case within six hours.</p></div>
+          </details>
+          <details>
+            <summary>Why isn't absolutely everything instant?</summary>
+            <div class="answer">
+              <p>The numbers that matter most already are. Any price or availability a guest actually sees when choosing dates — and everything they're charged — is asked of Guesty at that moment. There is no cached figure in that path and no delay.</p>
+              <p>The only things copied rather than fetched live are the summary details on browsing pages: the "from" price on a card, a property's name, its capacity. Those are copied because a homepage showing twenty villas would otherwise have to interrogate Guesty twenty times before it could draw anything, making the page slow for every visitor to keep a rarely-changing number fresh.</p>
+              <p>So Guesty notifies the website the moment those change, and it acts within a couple of minutes. The six-hourly sweep exists purely to catch a notification that never arrived.</p>
+            </div>
           </details>
           <details>
             <summary>Is guest card data stored anywhere in our systems?</summary>
@@ -860,7 +869,7 @@
             <tbody>
               <tr><td><b>CMS</b></td><td>The part of Webflow holding your content — properties, reviews, FAQs — separate from the page design</td></tr>
               <tr><td><b>Draft / published</b></td><td>A draft is saved but not visible to the public. Publishing makes it live</td></tr>
-              <tr><td><b>Sync</b></td><td>The automatic copying of information from Guesty into your website, every six hours</td></tr>
+              <tr><td><b>Sync</b></td><td>The automatic copying of information from Guesty into your website — triggered whenever Guesty changes, plus a full sweep every six hours as a safety net</td></tr>
               <tr><td><b>Listing</b></td><td>Guesty's word for a property</td></tr>
               <tr><td><b>Token</b></td><td>A temporary pass the engine room uses to talk to Guesty. It renews itself daily and is limited to five renewals a day</td></tr>
               <tr><td><b>Deploy</b></td><td>Putting an updated version of the engine room into service. Only your developer does this</td></tr>
