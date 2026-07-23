@@ -185,15 +185,47 @@
    * first (the hero search widget writes them), then falls back to the text the
    * widget rendered into the booking sidebar.
    */
+  /**
+   * What the guest has currently selected.
+   *
+   * THE ON-SCREEN WIDGET WINS OVER THE URL. It used to be the other way round,
+   * and because a property page is always reached with ?checkin=… in the
+   * address, the URL value always matched first and the picker was never read.
+   * Changing dates in the widget updated the display and nothing else: the
+   * price stayed on the old dates until someone edited the address bar by hand.
+   * Reported live 2026-07-23.
+   *
+   * The URL is only ever a starting value. It is still the fallback for pages
+   * that have no picker on them — checkout, the listings page — where these
+   * elements do not exist and `textOf` returns nothing.
+   */
   function readSelection() {
     var p = qs();
-    var ci = parseDate(p.checkin) || parseDate(textOf('#bk_ci')) || parseDate(textOf('#vbk_ci'));
-    var co = parseDate(p.checkout) || parseDate(textOf('#bk_co')) || parseDate(textOf('#vbk_co'));
 
-    var adults = int(p.adults, 0) || guestsFromText(textOf('#bk_g')) || 2;
+    // Every one of these mirrors the same picker state, so the first that
+    // yields a date is authoritative: booking sidebar, mobile modal, hero bar.
+    var ci =
+      parseDate(textOf('#bk_ci')) ||
+      parseDate(textOf('#vm_ci')) ||
+      parseDate(textOf('#vh_ci')) ||
+      parseDate(textOf('#vbk_ci')) ||
+      parseDate(p.checkin);
+    var co =
+      parseDate(textOf('#bk_co')) ||
+      parseDate(textOf('#vm_co')) ||
+      parseDate(textOf('#vh_co')) ||
+      parseDate(textOf('#vbk_co')) ||
+      parseDate(p.checkout);
+
     var children = int(p.children, 0);
     var infants = int(p.infants, 0);
     var pets = int(p.pets, 0);
+
+    // The picker only ever displays a combined head count, so recover adults by
+    // subtracting the children the URL knows about — otherwise a widget showing
+    // "6 guests" alongside children=2 in the URL would price for eight.
+    var shown = guestsFromText(textOf('#bk_g')) || guestsFromText(textOf('#vm_g')) || guestsFromText(textOf('#vh_g'));
+    var adults = shown > 0 ? Math.max(1, shown - children) : int(p.adults, 0) || 2;
 
     return {
       checkIn: toISO(ci),
@@ -1050,6 +1082,81 @@
     },
   };
 
+  /* --------------------------------------------------- search flow ----- */
+
+  /**
+   * Moves the guest to the next field once they've answered the current one:
+   * pick a city and the calendar opens; pick both dates and the guest picker
+   * opens. Without this every step needs two clicks — one to answer, one to
+   * open the next thing — which on mobile is most of the work of searching.
+   *
+   * Driven from outside the picker rather than inside it. The picker lives in
+   * the site's head code as a single block holding the hero bar, nav pill and
+   * mobile modal; nudging it from here costs one delegated listener and risks
+   * nothing. It works because the picker opens its popovers from a delegated
+   * click on [data-vla-seg], so a synthetic click is indistinguishable from a
+   * real one.
+   */
+  var SearchFlow = {
+    init: function () {
+      if (this.bound) return;
+      this.bound = true;
+      var self = this;
+
+      document.addEventListener('click', function (e) {
+        if (!e.target.closest) return;
+
+        // Remember which bar the guest is working in — hero, nav pill, mobile
+        // modal and booking sidebar can all be on the page at once, and the
+        // next field has to come from the same one.
+        var seg = e.target.closest('[data-vla-seg]');
+        if (seg) {
+          self.scope = seg.closest('.vla-modal, .vla-bar, .vla-navbar, .vla-bk') || document;
+          return;
+        }
+
+        if (e.target.closest('.vla-loci')) {
+          self.open('date', 260);
+          return;
+        }
+
+        var day = e.target.closest('.vla-d');
+        if (day && !/\b(emp|dis)\b/.test(day.className || '') && day.getAttribute('data-vbk-blocked') !== 'true') {
+          self.afterDates();
+        }
+      });
+    },
+
+    open: function (type, delay) {
+      var self = this;
+      setTimeout(function () {
+        var scope = self.scope && self.scope.querySelector ? self.scope : document;
+        var next = scope.querySelector('[data-vla-seg="' + type + '"]') || $('[data-vla-seg="' + type + '"]');
+        if (next) next.click();
+      }, delay || 240);
+    },
+
+    /**
+     * A first date selection leaves the calendar open for the second, so only
+     * advance once both ends are actually set. The picker closes the calendar
+     * on its own short timer, so poll briefly rather than guessing a delay.
+     */
+    afterDates: function () {
+      var self = this;
+      var tries = 0;
+      var check = function () {
+        tries += 1;
+        var sel = readSelection();
+        if (sel.checkIn && sel.checkOut && sel.nights >= 1) {
+          self.open('guests', 260);
+          return;
+        }
+        if (tries < 8) setTimeout(check, 120);
+      };
+      setTimeout(check, 200);
+    },
+  };
+
   /* ------------------------------------------------------- listing page */
 
   /**
@@ -1235,6 +1342,10 @@
 
   function boot() {
     var path = location.pathname.replace(/\/$/, '') || '/';
+
+    // The search bar appears on every page, including the homepage, so this is
+    // wired up before the page-specific setup and regardless of which page it is.
+    SearchFlow.init();
 
     var needsIndex = !/^\/(checkout|booking-confirmed|booking-failed)/.test(path);
 

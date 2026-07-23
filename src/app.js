@@ -26,8 +26,19 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 /**
  * The booking script is loaded by the Webflow site, so the browser calls this
- * origin cross-site. Only the site's own origins are allowed; PayU callbacks
- * are server-to-server and are not affected by CORS.
+ * origin cross-site. Only the site's own origins get CORS headers.
+ *
+ * An unrecognised origin must be REFUSED HEADERS, never rejected with an error.
+ * This previously threw, which turned every such request into a 500 — and PayU
+ * returns the guest by posting a form from secure.payu.in, which carries an
+ * Origin header like any other cross-site POST. The result was that every real
+ * payment died on an error page before the callback ran: money taken, no
+ * reservation, guest shown "something went wrong". Observed live 2026-07-23.
+ *
+ * Withholding the headers is the actual protection. A browser refuses to hand
+ * a scripted cross-origin response to a page that was not granted access, while
+ * a form POST or a plain navigation — neither of which CORS governs — proceeds
+ * as it should.
  */
 const corsOptions = {
   origin(origin, callback) {
@@ -36,7 +47,7 @@ const corsOptions = {
     if (config.allowedOrigins.includes(origin)) return callback(null, true);
     // Allow any *.webflow.io preview of this site.
     if (/^https:\/\/[a-z0-9-]+\.webflow\.io$/i.test(origin)) return callback(null, true);
-    return callback(new Error(`Origin ${origin} is not allowed`));
+    return callback(null, false);
   },
   methods: ['GET', 'POST', 'OPTIONS'],
   maxAge: 86400,
