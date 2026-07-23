@@ -398,7 +398,8 @@
         <li><a href="#s12"><span class="n">12</span><span>Before you launch</span></a></li>
         <li><a href="#s13"><span class="n">13</span><span>Known limits</span></a></li>
         <li><a href="#s14"><span class="n">14</span><span>Questions and answers</span></a></li>
-        <li><a href="#s15"><span class="n">15</span><span>Plain-English glossary</span></a></li>
+        <li><a href="#s15"><span class="n">15</span><span>Who does what</span></a></li>
+        <li><a href="#s16"><span class="n">16</span><span>Plain-English glossary</span></a></li>
       </ol>
     </nav>
 
@@ -862,7 +863,94 @@
 
       <!-- 15 -->
       <section id="s15">
-        <h2><span class="n">15</span>Plain-English glossary</h2>
+        <h2><span class="n">15</span>Who does what</h2>
+        <p class="lede">The rule of thumb: anything about <b>your business</b> — rates, dates, photos, words, refunds — is yours to change whenever you like. Anything about <b>how the machinery behaves</b> needs your developer.</p>
+
+        <h3>Yours entirely — never need to ask anyone</h3>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>What</th><th>Where</th></tr></thead>
+            <tbody>
+              <tr><td>Nightly rates, seasonal pricing, discounts on the calendar</td><td>Guesty</td></tr>
+              <tr><td>Blocking and freeing dates</td><td>Guesty</td></tr>
+              <tr><td>Minimum nights, check-in and check-out times</td><td>Guesty</td></tr>
+              <tr><td>Adding, deactivating or removing a villa</td><td>Guesty</td></tr>
+              <tr><td>Coupon and promo codes</td><td>Guesty</td></tr>
+              <tr><td>Which cancellation policy applies to a property</td><td>Guesty</td></tr>
+              <tr><td>Photos, galleries, descriptions, highlights, taglines</td><td>Webflow</td></tr>
+              <tr><td>Homepage text, menus, pages, any design change away from the booking box</td><td>Webflow</td></tr>
+              <tr><td>Publishing a new villa that's waiting as a draft</td><td>Webflow</td></tr>
+              <tr><td>Adding, editing or deleting guest reviews</td><td>Webflow</td></tr>
+              <tr><td>Refunds, settlements, transaction history</td><td>PayU</td></tr>
+              <tr><td>The payment card the hosting is billed to</td><td>Railway</td></tr>
+              <tr><td>Switching online booking off in an emergency</td><td>Webflow footer — section 2</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Quick settings — ask your developer, but it's minutes not days</h3>
+        <p>These are switches that already exist. Nothing needs building.</p>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Change</th><th>Roughly</th></tr></thead>
+            <tbody>
+              <tr><td>Take a deposit instead of the full amount, and set the percentage</td><td class="num">15 min</td></tr>
+              <tr><td>How often the safety-net sweep runs</td><td class="num">15 min</td></tr>
+              <tr><td>Point the system at your own domain once DNS is live</td><td class="num">15 min</td></tr>
+              <tr><td>Change which pages act as checkout, confirmation and failure</td><td class="num">15 min</td></tr>
+              <tr><td>Reissue any password, key or access token</td><td class="num">30 min</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Real development work</h3>
+        <ul>
+          <li><b>Anything about how the search bar, calendar, price box or checkout looks or behaves.</b> These are custom-built, not Webflow components.</li>
+          <li><b>Adding a new destination city</b> to the search dropdown.</li>
+          <li><b>Showing a new piece of Guesty information</b> on the site that isn't already copied across.</li>
+          <li><b>Emails to guests</b> — see the note below.</li>
+          <li><b>Paid extras or add-ons at checkout</b> (airport pickup, breakfast, celebrations).</li>
+          <li><b>Booking individual rooms</b> rather than whole properties.</li>
+          <li><b>Any currency other than rupees.</b></li>
+          <li><b>Reports, dashboards or analytics</b> beyond what Guesty already gives you.</li>
+          <li><b>Anything that has broken.</b></li>
+        </ul>
+
+        <h3>You can do it — but tell your developer first</h3>
+        <div class="rules">
+          <div class="rule care">
+            <div class="stripe"></div>
+            <div class="inner">
+              <div class="tag">Warn first</div>
+              <p><b>Redesigning the booking box or the Book Now button.</b> The system locates these by how they appear on the page. A restyle can disconnect them silently — the page looks perfect and quietly takes no bookings.</p>
+            </div>
+          </div>
+          <div class="rule care">
+            <div class="stripe"></div>
+            <div class="inner">
+              <div class="tag">Warn first</div>
+              <p><b>Renaming or deleting fields in the Webflow CMS.</b> The link to Guesty is by field name. Rename one and that information stops flowing.</p>
+            </div>
+          </div>
+          <div class="rule care">
+            <div class="stripe"></div>
+            <div class="inner">
+              <div class="tag">Warn first</div>
+              <p><b>Changing your Webflow plan, connecting a domain, or changing PayU accounts.</b> Each needs a matching change on the booking system's side, or payments and pricing stop.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="emergency" style="background:var(--watch-soft);border-color:var(--watch)">
+          <h3 style="color:var(--watch)">Decide this before launch: who emails the guest?</h3>
+          <p>The website itself sends <b>no email whatsoever</b>. After paying, a guest sees a confirmation on screen and nothing else arrives from the site.</p>
+          <p>If Guesty's automated guest messages are switched on, Guesty sends the confirmation — that is the intended arrangement. <b>Please confirm they are enabled and correctly worded before you launch</b>, because otherwise a guest pays several lakh rupees and receives nothing in writing. Building emails into the website instead is development work.</p>
+        </div>
+      </section>
+
+      <!-- 16 -->
+      <section id="s16">
+        <h2><span class="n">16</span>Plain-English glossary</h2>
         <div class="tablewrap">
           <table>
             <thead><tr><th>Term</th><th>What it means</th></tr></thead>
