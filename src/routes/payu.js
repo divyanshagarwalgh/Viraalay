@@ -101,12 +101,18 @@ router.post(
       verified = await payu.verifyPayment(txnid);
     } catch (err) {
       console.error('[payu] verify_payment failed', { reference, txnid, error: err.message });
-      await store.update(reference, {
-        paymentStatus: store.PAYMENT.PENDING,
-        bookingStatus: store.STATUS.AWAITING,
-        txnid,
-        mihpayid: body.mihpayid || '',
-      });
+      // Only record this against the booking if PayU is known to have sent the
+      // response. An unattributed POST that also fails verification tells us
+      // nothing, and letting it move a real booking to "awaiting" would hand
+      // anyone who guessed a reference a way to disturb it.
+      if (hashOk) {
+        await store.update(reference, {
+          paymentStatus: store.PAYMENT.PENDING,
+          bookingStatus: store.STATUS.AWAITING,
+          txnid,
+          mihpayid: body.mihpayid || '',
+        });
+      }
       // Deliberately NOT a failure page: the money may well have been taken.
       return redirectTo(res, config.failurePath, { ref: reference, reason: 'verification_pending' });
     }
