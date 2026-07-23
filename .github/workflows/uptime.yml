@@ -1,0 +1,72 @@
+name: Booking engine health
+
+# Runs on GitHub, NOT on Railway. That is the point: a monitor hosted inside the
+# thing it watches cannot tell you when that thing has died, and a second
+# Railway service would burn the Hobby plan's credit. Actions minutes are free
+# and unlimited on a public repo, so this costs nothing either way.
+#
+# GitHub emails the repo owner when a scheduled workflow fails, so the alert
+# needs no extra account.
+#
+# NOTE: GitHub disables scheduled workflows in a repo with no activity for 60
+# days, and emails before it does. Any push re-arms it.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # lets you run it by hand from the Actions tab
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+env:
+  BASE: https://viraalay-production.up.railway.app
+  # A real listing. Availability needs a valid Guesty token and a live Guesty
+  # call, so this exercises the exact path that broke on 2026-07-23 — but it is
+  # a GET against the calendar, so unlike /api/quote it leaves no quote records
+  # littering the Guesty account 96 times a day.
+  LISTING: 6a22a4bdf2787b00230e342e
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Service is up
+        run: |
+          for attempt in 1 2 3; do
+            body=$(curl -fsS --max-time 20 "$BASE/health" || true)
+            if echo "$body" | grep -q '"ok":true'; then
+              echo "health OK: $body"
+              exit 0
+            fi
+            echo "attempt $attempt failed: ${body:-<no response>}"
+            sleep 10
+          done
+          echo "::error::Booking engine /health did not return ok:true after 3 attempts. The site cannot price or take bookings."
+          exit 1
+
+      - name: Guesty pricing data is reachable
+        run: |
+          from=$(date -u -d '+30 days' +%F)
+          to=$(date -u -d '+33 days' +%F)
+          url="$BASE/api/availability?listingId=$LISTING&from=$from&to=$to"
+
+          for attempt in 1 2 3; do
+            body=$(curl -fsS --max-time 30 "$url" || true)
+            # A working response echoes the listing id. An expired or
+            # rate-limited Guesty token comes back as upstream_error instead,
+            # which is precisely the failure that took live pricing down before.
+            if echo "$body" | grep -q "\"listingId\":\"$LISTING\""; then
+              echo "availability OK: $(echo "$body" | head -c 200)"
+              exit 0
+            fi
+            echo "attempt $attempt failed: $(echo "${body:-<no response>}" | head -c 300)"
+            sleep 15
+          done
+          echo "::error::Guesty availability failed for listing $LISTING. Live pricing is probably down — check the Guesty OAuth token quota first, it allows only 5 fetches per 24h."
+          exit 1
