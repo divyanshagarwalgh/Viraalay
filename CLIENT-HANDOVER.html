@@ -1,0 +1,880 @@
+<title>Viraalay Booking System — Operations Handbook</title>
+
+<style>
+  :root {
+    --ground:   #f8f5f1;
+    --surface:  #ffffff;
+    --raised:   #fdfbf9;
+    --ink:      #241b1d;
+    --muted:    #6d605d;
+    --faint:    #8c807d;
+    --line:     #e4dbd4;
+    --wine:     #74263c;
+    --wine-ink: #74263c;
+    --wine-soft:#f4eaed;
+    --go:       #2f6b4f;
+    --go-soft:  #e8f1eb;
+    --stop:     #a8342a;
+    --stop-soft:#fbeae7;
+    --watch:    #85601a;
+    --watch-soft:#faf1de;
+
+    --display: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+    --body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:   #161113;
+      --surface:  #1e1719;
+      --raised:   #241c1f;
+      --ink:      #f1e9e7;
+      --muted:    #a89a99;
+      --faint:    #8b7d7c;
+      --line:     #3a2d31;
+      --wine:     #dd93a9;
+      --wine-ink: #dd93a9;
+      --wine-soft:#2e1f25;
+      --go:       #74c398;
+      --go-soft:  #16281f;
+      --stop:     #ec9484;
+      --stop-soft:#2e1a17;
+      --watch:    #ddb15c;
+      --watch-soft:#2a2114;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:   #161113;
+    --surface:  #1e1719;
+    --raised:   #241c1f;
+    --ink:      #f1e9e7;
+    --muted:    #a89a99;
+    --faint:    #8b7d7c;
+    --line:     #3a2d31;
+    --wine:     #dd93a9;
+    --wine-ink: #dd93a9;
+    --wine-soft:#2e1f25;
+    --go:       #74c398;
+    --go-soft:  #16281f;
+    --stop:     #ec9484;
+    --stop-soft:#2e1a17;
+    --watch:    #ddb15c;
+    --watch-soft:#2a2114;
+  }
+  :root[data-theme="light"] {
+    --ground:   #f8f5f1;
+    --surface:  #ffffff;
+    --raised:   #fdfbf9;
+    --ink:      #241b1d;
+    --muted:    #6d605d;
+    --faint:    #8c807d;
+    --line:     #e4dbd4;
+    --wine:     #74263c;
+    --wine-ink: #74263c;
+    --wine-soft:#f4eaed;
+    --go:       #2f6b4f;
+    --go-soft:  #e8f1eb;
+    --stop:     #a8342a;
+    --stop-soft:#fbeae7;
+    --watch:    #85601a;
+    --watch-soft:#faf1de;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1140px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  /* ---------- masthead ---------- */
+  .mast {
+    padding: 56px 0 34px;
+    border-bottom: 2px solid var(--wine);
+    margin-bottom: 8px;
+  }
+  .eyebrow {
+    font-size: 11.5px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--wine-ink);
+    font-weight: 700;
+    margin-bottom: 18px;
+  }
+  .mast h1 {
+    font-family: var(--display);
+    font-size: clamp(34px, 5.4vw, 56px);
+    line-height: 1.07;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+    margin-bottom: 18px;
+  }
+  .standfirst {
+    font-family: var(--display);
+    font-size: clamp(17px, 2.1vw, 21px);
+    line-height: 1.5;
+    color: var(--muted);
+    max-width: 62ch;
+  }
+  .mast-meta {
+    margin-top: 26px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 26px;
+    font-size: 12.5px;
+    color: var(--faint);
+  }
+  .mast-meta b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- layout ---------- */
+  .cols { display: block; }
+  @media (min-width: 1000px) {
+    .cols {
+      display: grid;
+      grid-template-columns: 218px minmax(0, 1fr);
+      gap: 56px;
+      align-items: start;
+    }
+    nav.toc {
+      position: sticky;
+      top: 24px;
+      max-height: calc(100vh - 48px);
+      overflow-y: auto;
+      padding-top: 44px;
+    }
+  }
+  nav.toc { padding: 32px 0; }
+  nav.toc .toc-label {
+    font-size: 11px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--faint);
+    font-weight: 700;
+    margin-bottom: 14px;
+  }
+  nav.toc ol { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+  nav.toc a {
+    display: flex;
+    gap: 9px;
+    padding: 4px 0;
+    font-size: 13.5px;
+    line-height: 1.35;
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+  }
+  nav.toc a:hover { color: var(--wine-ink); }
+  nav.toc a:focus-visible { outline: 2px solid var(--wine); outline-offset: 3px; border-radius: 2px; }
+  nav.toc a .n { color: var(--faint); font-variant-numeric: tabular-nums; min-width: 15px; }
+
+  /* ---------- sections ---------- */
+  section { padding-top: 52px; scroll-margin-top: 20px; }
+  section > h2 {
+    font-family: var(--display);
+    font-size: clamp(24px, 3vw, 31px);
+    line-height: 1.18;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 22px;
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+  }
+  section > h2 .n {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--wine-ink);
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+  h3 {
+    font-family: var(--display);
+    font-size: 19.5px;
+    font-weight: 600;
+    margin: 30px 0 10px;
+    text-wrap: balance;
+  }
+  p { max-width: 68ch; margin-bottom: 14px; }
+  ul, ol.plain { max-width: 68ch; margin: 0 0 16px 20px; }
+  li { margin-bottom: 7px; }
+  strong { font-weight: 650; }
+  a { color: var(--wine-ink); }
+  code {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    background: var(--wine-soft);
+    color: var(--wine-ink);
+    padding: 1.5px 5px;
+    border-radius: 3px;
+    word-break: break-word;
+  }
+
+  /* ---------- rule cards ---------- */
+  .rules { display: flex; flex-direction: column; gap: 12px; margin: 20px 0 26px; }
+  .rule {
+    display: grid;
+    grid-template-columns: 4px 1fr;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .rule .stripe { background: var(--muted); }
+  .rule.never  .stripe { background: var(--stop); }
+  .rule.always .stripe { background: var(--go); }
+  .rule.care   .stripe { background: var(--watch); }
+  .rule .inner { padding: 14px 18px; }
+  .rule .tag {
+    font-size: 10.5px;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    font-weight: 800;
+    margin-bottom: 5px;
+  }
+  .rule.never  .tag { color: var(--stop); }
+  .rule.always .tag { color: var(--go); }
+  .rule.care   .tag { color: var(--watch); }
+  .rule p { margin: 0; max-width: 66ch; font-size: 15.5px; }
+  .rule p + p { margin-top: 8px; }
+
+  /* ---------- emergency ---------- */
+  .emergency {
+    border: 2px solid var(--wine);
+    border-radius: 6px;
+    background: var(--wine-soft);
+    padding: 24px 26px;
+    margin: 22px 0;
+  }
+  .emergency h3 { margin-top: 0; color: var(--wine-ink); }
+  .emergency ol { margin-left: 20px; max-width: 66ch; }
+  .emergency .codeblock { background: var(--surface); }
+
+  .codeblock {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.65;
+    background: var(--raised);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 13px 16px;
+    margin: 12px 0 16px;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--ink);
+  }
+
+  /* ---------- tables ---------- */
+  .tablewrap { overflow-x: auto; margin: 18px 0 24px; border: 1px solid var(--line); border-radius: 5px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14.6px; background: var(--surface); }
+  th, td { text-align: left; padding: 11px 15px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th {
+    font-size: 11px;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    color: var(--faint);
+    font-weight: 700;
+    background: var(--raised);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td code { white-space: nowrap; }
+
+  /* ---------- faq ---------- */
+  .faq { display: flex; flex-direction: column; gap: 0; margin: 18px 0 8px; }
+  .faq details {
+    border-bottom: 1px solid var(--line);
+  }
+  .faq summary {
+    font-family: var(--display);
+    font-size: 17.5px;
+    font-weight: 600;
+    padding: 15px 30px 15px 0;
+    cursor: pointer;
+    position: relative;
+    list-style: none;
+    text-wrap: balance;
+  }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after {
+    content: "+";
+    position: absolute;
+    right: 4px;
+    top: 13px;
+    font-family: var(--mono);
+    font-size: 19px;
+    color: var(--wine-ink);
+    line-height: 1.2;
+  }
+  .faq details[open] summary::after { content: "–"; }
+  .faq summary:hover { color: var(--wine-ink); }
+  .faq summary:focus-visible { outline: 2px solid var(--wine); outline-offset: 2px; border-radius: 2px; }
+  .faq .answer { padding: 0 0 18px; }
+  .faq .answer p:last-child, .faq .answer ul:last-child { margin-bottom: 0; }
+
+  /* ---------- checklist ---------- */
+  .check { list-style: none; margin-left: 0; max-width: 68ch; }
+  .check li {
+    display: grid;
+    grid-template-columns: 22px 1fr;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--line);
+    margin: 0;
+  }
+  .check li::before {
+    content: "";
+    width: 15px; height: 15px;
+    margin-top: 5px;
+    border: 1.5px solid var(--muted);
+    border-radius: 3px;
+  }
+
+  .lede {
+    font-family: var(--display);
+    font-size: 18px;
+    line-height: 1.55;
+    color: var(--muted);
+    max-width: 64ch;
+    margin-bottom: 20px;
+  }
+
+  footer.end {
+    margin-top: 70px;
+    padding-top: 22px;
+    border-top: 2px solid var(--wine);
+    font-size: 13.5px;
+    color: var(--faint);
+    max-width: 68ch;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <div class="eyebrow">Operations Handbook</div>
+    <h1>Running the Viraalay booking system</h1>
+    <p class="standfirst">Everything the Viraalay team needs to run the website and take bookings — what to do, what never to touch, and what to do when something looks wrong. Written for people who don't work in code.</p>
+    <div class="mast-meta">
+      <span>Prepared for <b>the Viraalay team</b></span>
+      <span>Status: <b>live, pre-launch checks outstanding</b></span>
+      <span>Last updated <b>23 July 2026</b></span>
+    </div>
+  </header>
+
+  <div class="cols">
+
+    <nav class="toc" aria-label="Contents">
+      <div class="toc-label">Contents</div>
+      <ol>
+        <li><a href="#s1"><span class="n">1</span><span>How it all fits together</span></a></li>
+        <li><a href="#s2"><span class="n">2</span><span>The emergency switch</span></a></li>
+        <li><a href="#s3"><span class="n">3</span><span>Golden rules</span></a></li>
+        <li><a href="#s4"><span class="n">4</span><span>Where do I change this?</span></a></li>
+        <li><a href="#s5"><span class="n">5</span><span>How long changes take</span></a></li>
+        <li><a href="#s6"><span class="n">6</span><span>Everyday tasks</span></a></li>
+        <li><a href="#s7"><span class="n">7</span><span>Money and bookings</span></a></li>
+        <li><a href="#s8"><span class="n">8</span><span>Your accounts</span></a></li>
+        <li><a href="#s9"><span class="n">9</span><span>Alerts you'll receive</span></a></li>
+        <li><a href="#s10"><span class="n">10</span><span>When something's wrong</span></a></li>
+        <li><a href="#s11"><span class="n">11</span><span>Regular upkeep</span></a></li>
+        <li><a href="#s12"><span class="n">12</span><span>Before you launch</span></a></li>
+        <li><a href="#s13"><span class="n">13</span><span>Known limits</span></a></li>
+        <li><a href="#s14"><span class="n">14</span><span>Questions and answers</span></a></li>
+        <li><a href="#s15"><span class="n">15</span><span>Plain-English glossary</span></a></li>
+      </ol>
+    </nav>
+
+    <main>
+
+      <!-- 1 -->
+      <section id="s1">
+        <h2><span class="n">01</span>How it all fits together</h2>
+        <p class="lede">Four separate services do four different jobs. Almost every question below comes down to knowing which one owns the thing you want to change.</p>
+
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr><th>Service</th><th>What it does</th><th>You'll use it</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>Guesty</b></td>
+                <td>The master record for your properties: prices, availability, calendars, bookings. Everything about money and dates starts here.</td>
+                <td>Daily</td>
+              </tr>
+              <tr>
+                <td><b>Webflow</b></td>
+                <td>The website itself — pages, photos, descriptions, design.</td>
+                <td>Often</td>
+              </tr>
+              <tr>
+                <td><b>Railway</b></td>
+                <td>The engine room. A small program that connects the website to Guesty and PayU. It runs by itself.</td>
+                <td>Almost never</td>
+              </tr>
+              <tr>
+                <td><b>PayU</b></td>
+                <td>Takes the guest's card payment.</td>
+                <td>For refunds and settlements</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>What happens when a guest books</h3>
+        <ol class="plain">
+          <li>Guest picks dates on your website.</li>
+          <li>The website asks Guesty, live, what those exact dates cost. The price shown is always real and current — it is never a stored number.</li>
+          <li>Guest clicks <b>Book Now</b> and fills in their details.</li>
+          <li>They pay through PayU. Card details never touch your website or your systems.</li>
+          <li>Once payment clears, the reservation is created in Guesty automatically and the guest sees a confirmation page.</li>
+          <li>A record of the booking is also saved in Webflow for your reference.</li>
+        </ol>
+        <p>Nobody has to do anything manually for that to happen. It works overnight, on weekends, and while you're on holiday.</p>
+      </section>
+
+      <!-- 2 -->
+      <section id="s2">
+        <h2><span class="n">02</span>The emergency switch</h2>
+        <p class="lede">If something ever goes badly wrong with pricing or payments, this turns the booking system off in about two minutes without breaking your website.</p>
+
+        <div class="emergency">
+          <h3>How to switch off online booking</h3>
+          <ol>
+            <li>Open Webflow → <b>Site settings</b> → <b>Custom code</b> → <b>Footer code</b>.</li>
+            <li>Scroll to the very bottom. You'll find a short block that looks like this:</li>
+          </ol>
+          <div class="codeblock">window.VIRAALAY_BOOKING = {
+  apiBase: "https://viraalay-production.up.railway.app"
+};</div>
+          <ol start="3">
+            <li>Delete the web address between the quote marks so it reads <code>apiBase: ""</code></li>
+            <li>Save, then <b>Publish</b> the site.</li>
+          </ol>
+          <p style="margin-top:14px">Your website stays completely normal — photos, descriptions, enquiry forms, WhatsApp and phone buttons all keep working. Only live pricing and online payment stop. Put the address back and publish again to switch it on.</p>
+        </div>
+
+        <p><b>Take a photo or screenshot of that footer block now</b>, before you ever need it. If you can't remember the exact web address, you can't switch the system back on.</p>
+      </section>
+
+      <!-- 3 -->
+      <section id="s3">
+        <h2><span class="n">03</span>Golden rules</h2>
+
+        <div class="rules">
+          <div class="rule never">
+            <div class="stripe"></div>
+            <div class="inner">
+              <div class="tag">Never</div>
+              <p><b>Never change a price or block dates in Webflow.</b> Guesty is the master record. Anything you type into Webflow will be silently overwritten within six hours, and in the meantime your website and your calendar disagree — which is how a villa gets double-booked.</p>
+            </div>
+          </div>
+          <div class="rule never">
+            <div class="stripe"></div>
+            <div class="inner">
+              <div class="tag">Never</div>
+              <p><b>Never delete or edit the code blocks in Webflow's site settings</b> (Custom code → Head and Footer), except for the one emergency line in section 2. These run your search bar, calendar and checkout. Deleting them breaks the site.</p>
+            </div>
+          </div>
+          <div class="rule never">
+            <div class="stripe"></div>
+            <div class="inner">
+              <div class="tag">Never</div>
+              <p><b>Never delete a property from Webflow.</b> If a villa leaves your portfolio, deactivate it in Guesty instead. Deleting in Webflow leaves broken links and the system will try to recreate it.</p>
+            </div>
+          </div>
+          <div class="rule always">
+            <div class="stripe"></div>
+            <div class="inner">
+              <div class="tag">Always</div>
+              <p><b>Always make pricing, availability and calendar changes in Guesty.</b> The website follows automatically. You never need to touch the website to change a rate.</p>
+            </div>
+          </div>
+          <div class="rule always">
+            <div class="stripe"></div>
+            <div class="inner">
+              <div class="tag">Always</div>
+              <p><b>Always keep a valid payment card on the Railway account.</b> If that card fails, the engine room stops and your site can no longer show prices or take bookings. Nothing will warn you in advance.</p>
+            </div>
+          </div>
+          <div class="rule care">
+            <div class="stripe"></div>
+            <div class="inner">
+              <div class="tag">Careful</div>
+              <p><b>If you rename a property or rewrite its "About this home" text in Webflow, that change is sent to Guesty too.</b> These are the only two fields that travel in that direction. Everything else flows Guesty → website only.</p>
+            </div>
+          </div>
+          <div class="rule care">
+            <div class="stripe"></div>
+            <div class="inner">
+              <div class="tag">Careful</div>
+              <p><b>If a designer changes the property page layout</b> — especially the price box or the Book Now button — have someone test a real booking afterwards. The system finds those elements by their appearance on the page, so a redesign can quietly disconnect them.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4 -->
+      <section id="s4">
+        <h2><span class="n">04</span>Where do I change this?</h2>
+        <p class="lede">The single most useful table in this document. Find what you want to change, go to the place named, and don't touch the other one.</p>
+
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>I want to change…</th><th>Do it in</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td>Nightly rate for a villa</td><td><b>Guesty</b> → calendar</td><td>Website updates instantly for guests choosing dates</td></tr>
+              <tr><td>Block dates / mark as booked</td><td><b>Guesty</b> → calendar</td><td>Instantly greyed out on the website's calendar</td></tr>
+              <tr><td>Minimum nights</td><td><b>Guesty</b></td><td>Website enforces it automatically</td></tr>
+              <tr><td>Check-in / check-out times</td><td><b>Guesty</b></td><td>Shown on the checkout page</td></tr>
+              <tr><td>Number of guests a villa sleeps</td><td><b>Guesty</b></td><td>Feeds the guest filter on the website</td></tr>
+              <tr><td>Cancellation policy</td><td><b>Guesty</b></td><td>See section 13 — display is unfinished</td></tr>
+              <tr><td>Add a brand-new villa</td><td><b>Guesty</b>, then publish in Webflow</td><td>Arrives as a draft for you to review first</td></tr>
+              <tr><td>Property photos and gallery</td><td><b>Webflow</b></td><td>First set pulled from Guesty, yours thereafter</td></tr>
+              <tr><td>Property description / highlights</td><td><b>Webflow</b></td><td>Renaming or rewriting "About" also updates Guesty</td></tr>
+              <tr><td>Guest reviews</td><td><b>Webflow</b> → Reviews</td><td>Real Airbnb reviews were imported once</td></tr>
+              <tr><td>Homepage, page text, design, menus</td><td><b>Webflow</b></td><td>Normal Webflow editing</td></tr>
+              <tr><td>Discount coupon wording</td><td><b>Webflow</b></td><td>Design element on the property page</td></tr>
+              <tr><td>Refund a guest</td><td><b>PayU</b> dashboard</td><td>Then update the booking in Guesty by hand</td></tr>
+              <tr><td>Switch online booking off</td><td><b>Webflow</b> footer code</td><td>See section 2</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 5 -->
+      <section id="s5">
+        <h2><span class="n">05</span>How long changes take</h2>
+        <p>Some things appear the second you save them. Others are copied across on a six-hourly cycle. Knowing which is which saves a lot of worrying.</p>
+
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Change</th><th>Appears on the site</th><th>Why</th></tr></thead>
+            <tbody>
+              <tr><td>Rate change in Guesty</td><td class="num">Immediately</td><td>Prices for chosen dates are asked of Guesty on every page view</td></tr>
+              <tr><td>Blocking or freeing dates</td><td class="num">Immediately</td><td>The calendar is read live</td></tr>
+              <tr><td>A new booking anywhere</td><td class="num">Immediately</td><td>Those dates stop being offered at once</td></tr>
+              <tr><td>"From" price on homepage cards</td><td class="num">Within 6 hours</td><td>Copied into the website on a schedule</td></tr>
+              <tr><td>Property name, description, capacity</td><td class="num">Within 6 hours</td><td>Same schedule (often much faster)</td></tr>
+              <tr><td>A brand-new villa added to Guesty</td><td class="num">Within 6 hours, then needs publishing</td><td>Arrives as a draft so you can check it first</td></tr>
+              <tr><td>Anything you edit in Webflow</td><td class="num">When you press Publish</td><td>Normal Webflow behaviour</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>You do <b>not</b> need to publish the Webflow site for Guesty changes to show. The system publishes those itself.</p>
+      </section>
+
+      <!-- 6 -->
+      <section id="s6">
+        <h2><span class="n">06</span>Everyday tasks</h2>
+
+        <h3>Adding a new villa</h3>
+        <ol class="plain">
+          <li>Create and activate the listing in Guesty as you normally would, with photos, rates and calendar.</li>
+          <li>Within six hours it appears in Webflow under <b>Properties</b> as an unpublished draft.</li>
+          <li>Open it, check the description and photos read well, add anything missing.</li>
+          <li>Publish the item. It's now on the website.</li>
+        </ol>
+        <p>The draft step is deliberate — no villa goes live on your website without a human looking at it first.</p>
+
+        <h3>Taking a villa off the site</h3>
+        <p>Deactivate or unlist it in Guesty. Don't delete the Webflow item.</p>
+
+        <h3>Changing a rate for a specific date range</h3>
+        <p>Guesty calendar only. Refresh the property page on the website afterwards and you'll see the new figure straight away.</p>
+
+        <h3>Editing photos or wording</h3>
+        <p>Webflow → <b>Properties</b> → the villa. Photos, galleries and highlights are yours to manage. If you want to be certain the system never overwrites your wording, switch on <b>Lock editorial content</b> on that property.</p>
+
+        <h3>Checking recent bookings</h3>
+        <p>Guesty is the real record. Webflow → <b>Bookings</b> also keeps a copy with the guest's contact details and payment reference, which is handy for support queries.</p>
+      </section>
+
+      <!-- 7 -->
+      <section id="s7">
+        <h2><span class="n">07</span>Money and bookings</h2>
+
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Question</th><th>Answer</th></tr></thead>
+            <tbody>
+              <tr><td>Currency</td><td>Indian Rupees only</td></tr>
+              <tr><td>How much is charged</td><td><b>The full stay amount</b>, at the time of booking — not a deposit</td></tr>
+              <tr><td>Is GST included</td><td>Yes. Prices shown include all applicable taxes and the breakdown is itemised at checkout</td></tr>
+              <tr><td>Who handles the card</td><td>PayU, on their own secure pages. Card numbers never reach your website or Guesty</td></tr>
+              <tr><td>Payment mode</td><td><b>Live</b> — every payment is a real charge on a real card</td></tr>
+              <tr><td>Where the money lands</td><td>Your PayU merchant account, settled on PayU's normal schedule</td></tr>
+              <tr><td>Refunds</td><td><b>Manual.</b> Issue in the PayU dashboard, then update the booking in Guesty yourself</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>The safety check on every payment</h3>
+        <p>When PayU reports a successful payment, the system independently verifies the amount and the payment's authenticity before creating the reservation. A tampered or mismatched payment is refused and sent to a failure page rather than being confirmed. If that ever happens, the guest is told not to pay again and you'll see the booking flagged.</p>
+
+        <h3>If a guest pays but doesn't get a confirmation</h3>
+        <p>Their money is safe and the payment is recorded. Check Guesty for the reservation and the Webflow <b>Bookings</b> entry for the payment reference. Contact them with a confirmation manually. This should be rare, but a guest emailing about it is not evidence they were charged twice.</p>
+      </section>
+
+      <!-- 8 -->
+      <section id="s8">
+        <h2><span class="n">08</span>Your accounts</h2>
+        <p class="lede">Five logins keep this running. Make sure at least two people at Viraalay can access each one, and that they're not all tied to a single personal email address.</p>
+
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Account</th><th>What breaks without it</th><th>Cost</th></tr></thead>
+            <tbody>
+              <tr><td><b>Guesty</b></td><td>Everything. Prices, availability, reservations</td><td>Your existing subscription</td></tr>
+              <tr><td><b>Webflow</b></td><td>The website itself</td><td>Your existing plan</td></tr>
+              <tr><td><b>Railway</b></td><td>Live pricing and online booking stop; the rest of the site survives</td><td class="num">US$5 / month</td></tr>
+              <tr><td><b>PayU</b></td><td>Payments and refunds</td><td>Transaction fees per your contract</td></tr>
+              <tr><td><b>GitHub</b></td><td>The source code and the automatic health checks</td><td class="num">Free</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>The website currently lives at <code>viraalay.webflow.io</code>. Your own domain, <b>viraalay.com</b>, is not yet pointed at it — see section 12.</p>
+      </section>
+
+      <!-- 9 -->
+      <section id="s9">
+        <h2><span class="n">09</span>Alerts you'll receive</h2>
+        <p>An automatic health check runs against the booking system and emails the GitHub account owner if it fails. It checks that the engine room is answering and that live prices are still coming through from Guesty.</p>
+
+        <h3>If you get a failure email</h3>
+        <ol class="plain">
+          <li>Open the website and try to price a stay on any property page.</li>
+          <li>If prices show correctly, it was a brief blip — no action needed.</li>
+          <li>If prices are missing or you see <i>"We could not price this stay"</i>, go to section 10 and contact your developer.</li>
+          <li>If it will be a long outage, use the emergency switch in section 2 so guests see a clean enquiry-only site instead of errors.</li>
+        </ol>
+
+        <div class="rules">
+          <div class="rule care">
+            <div class="stripe"></div>
+            <div class="inner">
+              <div class="tag">Worth knowing</div>
+              <p>This check is a free safety net, not a guarantee. It sometimes runs late or not at all. <b>Silence does not prove the site is healthy</b> — it's worth someone opening a property page each morning and confirming a price appears. That ten-second habit is the most reliable monitoring you have.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 10 -->
+      <section id="s10">
+        <h2><span class="n">10</span>When something's wrong</h2>
+
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>What you see</th><th>What it usually means</th><th>What to do</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>"We could not price this stay" on every property</td>
+                <td>The engine room can't reach Guesty, or its access has expired</td>
+                <td>Contact your developer. Mention the <b>Guesty token limit</b> — it's the most common cause and only allows five renewals a day</td>
+              </tr>
+              <tr>
+                <td>"These dates are not available"</td>
+                <td>Normal. Those dates are booked or blocked in Guesty</td>
+                <td>Nothing. Check the Guesty calendar if you disagree</td>
+              </tr>
+              <tr>
+                <td>No prices anywhere, site otherwise fine</td>
+                <td>The engine room is switched off or stopped</td>
+                <td>Check Railway is running and its card is valid</td>
+              </tr>
+              <tr>
+                <td>A villa is missing from the listings page</td>
+                <td>Either unavailable for the chosen dates, still a draft, or the page limit — see section 13</td>
+                <td>Clear the dates and look again. If still missing, check it's published in Webflow</td>
+              </tr>
+              <tr>
+                <td>Prices look wrong or out of date on cards</td>
+                <td>The six-hourly copy hasn't run yet</td>
+                <td>Wait. The price a guest is actually charged comes live from Guesty and is always correct</td>
+              </tr>
+              <tr>
+                <td>Book Now does nothing</td>
+                <td>The button was restyled and lost its connection</td>
+                <td>Contact your developer — mention the Book Now binding</td>
+              </tr>
+              <tr>
+                <td>Guest paid, no reservation in Guesty</td>
+                <td>Payment cleared but reservation creation failed</td>
+                <td>Create the reservation manually in Guesty, honour the booking, and report it — this shouldn't happen</td>
+              </tr>
+              <tr>
+                <td>Website completely down</td>
+                <td>A Webflow problem, unrelated to booking</td>
+                <td>Check Webflow's status page and your Webflow account</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 11 -->
+      <section id="s11">
+        <h2><span class="n">11</span>Regular upkeep</h2>
+        <p>Short list. Nothing here is daily technical work.</p>
+
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>How often</th><th>What</th><th>Why</th></tr></thead>
+            <tbody>
+              <tr><td>Every morning</td><td>Open a property page, pick dates, confirm a price appears</td><td>Ten seconds, and the most reliable check you have</td></tr>
+              <tr><td>Weekly</td><td>Review new draft properties in Webflow</td><td>New Guesty villas wait for your approval</td></tr>
+              <tr><td>Monthly</td><td>Check the Railway card and bill</td><td>A failed card silently stops bookings</td></tr>
+              <tr><td>Every 2 months</td><td>Ask your developer to make any small change to the code</td><td>GitHub switches off the health checks after 60 days of inactivity</td></tr>
+              <tr><td>Occasionally</td><td>Clear out old booking records holding guest details</td><td>Guest names, emails and phone numbers accumulate indefinitely</td></tr>
+              <tr><td>After any redesign</td><td>Test one full booking</td><td>Layout changes can disconnect the price box or Book Now button</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 12 -->
+      <section id="s12">
+        <h2><span class="n">12</span>Before you launch</h2>
+        <p class="lede">These are open items at handover. None stop the system working; all should be closed before you promote the site publicly.</p>
+
+        <ul class="check">
+          <li><b>Do one real test booking and refund it.</b> Payments are in live mode and have never been tested end to end with a real card. Use the cheapest villa, book one night, confirm it appears in Guesty, then refund it in PayU.</li>
+          <li><b>Change all the passwords and keys.</b> The Guesty, Webflow, PayU and website credentials were shared over chat during the build. Your developer should reissue all four — the PayU salt first, as it protects payments.</li>
+          <li><b>Point viraalay.com at the website.</b> It currently goes somewhere else. The booking system is already configured to accept it.</li>
+          <li><b>Delete the 30 sample reviews.</b> Filter Webflow's Reviews by the "Placeholder" switch. Twenty real Airbnb reviews stay.</li>
+          <li><b>Replace the placeholder brochure PDF and video link.</b></li>
+          <li><b>Fix the FAQs section</b> on property pages — 190 real FAQs exist but none display.</li>
+          <li><b>Show more than 15 properties</b> on the listings page — one villa is currently hidden by a page limit.</li>
+          <li><b>Fix the cancellation wording at checkout</b> — it still reads "Cancellation terms for this home will appear here."</li>
+          <li><b>Display the Tagline field</b>, which is filled in but shown nowhere.</li>
+          <li><b>Add a free uptime monitor</b> such as UptimeRobot, for alerting you can rely on.</li>
+        </ul>
+      </section>
+
+      <!-- 13 -->
+      <section id="s13">
+        <h2><span class="n">13</span>Known limits</h2>
+        <p>Honest list of what this system does not do, so nothing comes as a surprise later.</p>
+        <ul>
+          <li><b>Rupees only.</b> No other currency has been tested.</li>
+          <li><b>Refunds are manual</b> in PayU, and the booking must be updated by hand afterwards.</li>
+          <li><b>Rooms are not separately bookable.</b> A guest books the whole property. Where individual rooms are sold — the BlueRoot Heritage rooms — each is set up in Guesty as its own listing.</li>
+          <li><b>The "Rooms" selector on the booking box doesn't change the price.</b> Guesty prices the whole property.</li>
+          <li><b>Guest details sit in the Webflow bookings list</b> with no automatic clean-up. Anyone with Webflow access can read them.</li>
+          <li><b>Cancellation policy text is not yet displayed</b> at checkout.</li>
+          <li><b>New properties need a human to publish them.</b> Deliberate, but it does mean a villa added on Friday evening won't be bookable until someone approves it.</li>
+          <li><b>Code changes need your developer to deploy them.</b> Nothing deploys automatically.</li>
+        </ul>
+      </section>
+
+      <!-- 14 -->
+      <section id="s14">
+        <h2><span class="n">14</span>Questions and answers</h2>
+
+        <div class="faq">
+          <details>
+            <summary>If I change a price in Guesty, do I need to do anything on the website?</summary>
+            <div class="answer"><p>No. A guest choosing dates gets a price fetched from Guesty at that moment. The "from" price on homepage cards catches up within six hours on its own.</p></div>
+          </details>
+          <details>
+            <summary>Do I need to press Publish in Webflow after changing something in Guesty?</summary>
+            <div class="answer"><p>No. The system publishes those updates itself. You only press Publish for changes <i>you</i> make in Webflow.</p></div>
+          </details>
+          <details>
+            <summary>Can two guests book the same villa for the same dates?</summary>
+            <div class="answer"><p>Availability is checked against Guesty at the moment of booking, and Guesty is also the master calendar for Airbnb and your other channels — so a date booked anywhere stops being offered everywhere. The only theoretical risk is two people paying within the same few seconds. If it ever happens, you'll see it in Guesty and can refund one guest.</p></div>
+          </details>
+          <details>
+            <summary>What if someone edits a price in Webflow by mistake?</summary>
+            <div class="answer"><p>No harm to guests — they're always charged the live Guesty price. The website will correct itself within six hours.</p></div>
+          </details>
+          <details>
+            <summary>Is guest card data stored anywhere in our systems?</summary>
+            <div class="answer"><p>No. Card details are entered on PayU's own pages and never pass through your website, Guesty or the engine room. You do store names, emails and phone numbers in Guesty and in the Webflow bookings list.</p></div>
+          </details>
+          <details>
+            <summary>What happens if Railway goes down?</summary>
+            <div class="answer"><p>The website stays up — photos, descriptions, enquiry forms, phone and WhatsApp all work. Live prices and online booking stop. Guests can still contact you. Use the emergency switch in section 2 if it will be a long outage, so nobody sees an error.</p></div>
+          </details>
+          <details>
+            <summary>Can we take a deposit instead of the full amount?</summary>
+            <div class="answer"><p>The system supports it and it's currently set to charge the full stay. Changing it to a percentage deposit is a small configuration change for your developer, not a rebuild.</p></div>
+          </details>
+          <details>
+            <summary>Can we add a new destination city?</summary>
+            <div class="answer"><p>Yes. Add properties in that city in Guesty and ask your developer to add the city to the search box's list — it's a one-line change. Cities with no Guesty properties are deliberately not offered, so guests never search for something that returns nothing.</p></div>
+          </details>
+          <details>
+            <summary>What if we redesign the property page?</summary>
+            <div class="answer"><p>Test a full booking afterwards. The price box and Book Now button are found by how they appear on the page, so restyling can disconnect them silently — the page will look fine while quietly not working.</p></div>
+          </details>
+          <details>
+            <summary>Who owns the code?</summary>
+            <div class="answer"><p>You do. It sits in a GitHub repository. Note it is currently <b>publicly visible</b> — it contains no passwords, but anyone can read how the system is built. Ask your developer to make it private if you'd rather, though that reduces the free automated checks.</p></div>
+          </details>
+          <details>
+            <summary>Can we move away from Railway to something free?</summary>
+            <div class="answer"><p>You can, but it's a false economy at this scale. The free alternatives either put the site to sleep between visits — which breaks the connection to Guesty and takes pricing down — or forbid commercial use, or need the system rebuilt. Five dollars a month is less than one lost booking.</p></div>
+          </details>
+          <details>
+            <summary>Does a guest see a price including GST?</summary>
+            <div class="answer"><p>Yes. Every figure shown to a guest includes taxes, and the checkout itemises the accommodation fare and GST separately before they pay.</p></div>
+          </details>
+          <details>
+            <summary>How do we know the system is working right now?</summary>
+            <div class="answer"><p>Open any property page, pick dates a few weeks out, and check a price with a tax breakdown appears. That single test exercises the whole chain: website, engine room, and Guesty.</p></div>
+          </details>
+          <details>
+            <summary>What's the one thing most likely to break it?</summary>
+            <div class="answer"><p>The Railway payment card failing, or someone deleting the code blocks in Webflow's site settings. Both are entirely preventable.</p></div>
+          </details>
+        </div>
+      </section>
+
+      <!-- 15 -->
+      <section id="s15">
+        <h2><span class="n">15</span>Plain-English glossary</h2>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Term</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><b>CMS</b></td><td>The part of Webflow holding your content — properties, reviews, FAQs — separate from the page design</td></tr>
+              <tr><td><b>Draft / published</b></td><td>A draft is saved but not visible to the public. Publishing makes it live</td></tr>
+              <tr><td><b>Sync</b></td><td>The automatic copying of information from Guesty into your website, every six hours</td></tr>
+              <tr><td><b>Listing</b></td><td>Guesty's word for a property</td></tr>
+              <tr><td><b>Token</b></td><td>A temporary pass the engine room uses to talk to Guesty. It renews itself daily and is limited to five renewals a day</td></tr>
+              <tr><td><b>Deploy</b></td><td>Putting an updated version of the engine room into service. Only your developer does this</td></tr>
+              <tr><td><b>Quote</b></td><td>A live price for specific dates and guest numbers, calculated by Guesty on the spot</td></tr>
+              <tr><td><b>Webhook</b></td><td>An instant notification between systems, so a Guesty change reaches the website without waiting</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer class="end">
+        <p>Keep this document with your Guesty and Webflow logins. If you only remember three things: <b>prices and dates live in Guesty</b>, <b>the emergency switch is in Webflow's footer code</b>, and <b>a valid card on Railway keeps the whole thing running</b>.</p>
+      </footer>
+
+    </main>
+  </div>
+</div>
