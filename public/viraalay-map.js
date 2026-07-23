@@ -11,10 +11,13 @@
  * This is the code-fallback data path from the build spec (§5.5): the left
  * cards are rendered here from the JSON rather than by a native Finsweet
  * Collection List, so the list and the map can never disagree — they are the
- * same array. Everything downstream (markers, popups, filter) reads the same
- * card DOM the spec describes (.map_card with data-coords / data-slug /
- * data-price / data-name), so a future switch to a native list needs no change
- * to the interaction code.
+ * same array. The cards use the exact DOM the spec describes (.map_card with
+ * data-coords / data-slug / data-price / data-name), so a future switch to a
+ * native list needs no change to the interaction code.
+ *
+ * The card list is rendered as soon as the data arrives, independently of the
+ * map: if tiles are slow or WebGL is unavailable, the list still works and the
+ * markers simply plot once the map is ready (graceful degradation, §9.2).
  *
  * Self-contained: injects MapLibre GL JS (pinned major v5) and its CSS if the
  * page does not already carry them, then boots. No Mapbox, no Google, no key.
@@ -70,28 +73,28 @@
    * coordinate. Stacked exactly, only the top pill would be visible or
    * clickable. Fan same-point markers out around a tiny circle (~40m) so every
    * one can be seen and opened. Deterministic, so the layout never jitters
-   * between renders.
+   * between renders. Returns a map of slug -> {lng,lat} for the markers.
    */
-  function spread(props) {
+  function spread(list) {
     var groups = {};
-    props.forEach(function (p) {
+    list.forEach(function (p) {
       var key = p.lat.toFixed(5) + ',' + p.lng.toFixed(5);
       (groups[key] = groups[key] || []).push(p);
     });
-    var out = [];
+    var pos = {};
     Object.keys(groups).forEach(function (key) {
       var g = groups[key];
       if (g.length === 1) {
-        out.push({ p: g[0], lat: g[0].lat, lng: g[0].lng });
+        pos[g[0].slug] = { lat: g[0].lat, lng: g[0].lng };
         return;
       }
       var R = 0.0004; // ~40m
       g.forEach(function (p, i) {
         var a = (2 * Math.PI * i) / g.length;
-        out.push({ p: p, lat: p.lat + R * Math.cos(a), lng: p.lng + R * Math.sin(a) });
+        pos[p.slug] = { lat: p.lat + R * Math.cos(a), lng: p.lng + R * Math.sin(a) };
       });
     });
-    return out;
+    return pos;
   }
 
   function injectCSS() {
@@ -107,7 +110,7 @@
       '.viraalay-marker.is-active{background:#1a1a1a;z-index:5}',
       /* popup */
       '.viraalay-popup .maplibregl-popup-content{padding:0;border-radius:12px;overflow:hidden;width:230px;box-shadow:0 6px 24px rgba(0,0,0,.25)}',
-      '.viraalay-popup .maplibregl-popup-close-button{width:22px;height:22px;font-size:16px;color:#fff;background:rgba(0,0,0,.35);border-radius:50%;right:6px;top:6px}',
+      '.viraalay-popup .maplibregl-popup-close-button{width:22px;height:22px;font-size:16px;color:#fff;background:rgba(0,0,0,.35);border-radius:50%;right:6px;top:6px;line-height:1}',
       '.vp-img{width:100%;height:130px;object-fit:cover;display:block;background:#eee}',
       '.vp-body{padding:10px 12px;font:400 13px/1.35 system-ui,sans-serif;color:#222}',
       '.vp-name{font-weight:600;margin:0 0 2px}',
@@ -140,27 +143,46 @@
     document.head.appendChild(s);
   }
 
-  /* ---- boot ------------------------------------------------------------- */
+  function cardInnerHTML(p) {
+    return (
+      '<div class="map_card-image-wrap">' +
+      (p.image ? '<img class="map_card-image" src="' + esc(p.image) + '" alt="' + esc(p.name) + '" loading="lazy">' : '') +
+      '</div>' +
+      '<div class="map_card-body">' +
+      '<p class="map_card-title">' + esc(p.name) + '</p>' +
+      (p.location ? '<p class="map_card-location">' + esc(p.location) + '</p>' : '') +
+      '<p class="map_card-meta">' + esc(metaLine(p)) + '</p>' +
+      '<p class="map_card-price">₹' + inr(p.price) + ' <small>/ night</small></p>' +
+      '</div>'
+    );
+  }
 
-  function boot(all) {
+  function popupHTML(p) {
+    return (
+      (p.image ? '<img class="vp-img" src="' + esc(p.image) + '" alt="' + esc(p.name) + '">' : '') +
+      '<div class="vp-body">' +
+      '<p class="vp-name">' + esc(p.name) + '</p>' +
+      '<p class="vp-meta">' + esc(metaLine(p)) + '</p>' +
+      '<span class="vp-price">₹' + inr(p.price) + ' <small>/ night</small></span><br>' +
+      '<a class="vp-cta" href="' + esc(p.url) + '">View villa →</a>' +
+      '</div>'
+    );
+  }
+
+  /* ---- app -------------------------------------------------------------- */
+
+  function app(all) {
     injectCSS();
 
     var listEl = document.querySelector('[data-map-list]') || document.querySelector('.map_list');
     var countEl = document.querySelector('[data-map-count]') || document.querySelector('.map_count');
     var filterBtns = [].slice.call(document.querySelectorAll('[data-map-filter]'));
 
-    var map = new maplibregl.Map({
-      container: 'map',
-      style: styleUrl(),
-      center: [74.0, 25.4],
-      zoom: 5,
-      attributionControl: true,
-    });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
-
+    var map = null;
+    var mapReady = false;
     var markers = {}; // slug -> maplibre Marker
     var cards = {}; // slug -> card element
-    var currentFilter = 'all';
+    var currentList = all;
 
     function setActive(slug) {
       Object.keys(markers).forEach(function (k) {
@@ -171,57 +193,16 @@
       });
     }
 
-    function clearMarkers() {
-      Object.keys(markers).forEach(function (k) {
-        markers[k].remove();
-      });
-      markers = {};
+    /* --- left list (no map dependency) --- */
+    function renderList(list) {
       cards = {};
-    }
-
-    function cardHTML(p) {
-      return (
-        '<div class="map_card-image-wrap">' +
-        (p.image ? '<img class="map_card-image" src="' + esc(p.image) + '" alt="' + esc(p.name) + '" loading="lazy">' : '') +
-        '</div>' +
-        '<div class="map_card-body">' +
-        '<p class="map_card-title">' + esc(p.name) + '</p>' +
-        (p.location ? '<p class="map_card-location">' + esc(p.location) + '</p>' : '') +
-        '<p class="map_card-meta">' + esc(metaLine(p)) + '</p>' +
-        '<p class="map_card-price">₹' + inr(p.price) + ' <small>/ night</small></p>' +
-        '</div>'
-      );
-    }
-
-    function popupHTML(p) {
-      return (
-        (p.image ? '<img class="vp-img" src="' + esc(p.image) + '" alt="' + esc(p.name) + '">' : '') +
-        '<div class="vp-body">' +
-        '<p class="vp-name">' + esc(p.name) + '</p>' +
-        '<p class="vp-meta">' + esc(metaLine(p)) + '</p>' +
-        '<span class="vp-price">₹' + inr(p.price) + ' <small>/ night</small></span><br>' +
-        '<a class="vp-cta" href="' + esc(p.url) + '">View villa →</a>' +
-        '</div>'
-      );
-    }
-
-    function render(list) {
-      clearMarkers();
-      if (listEl) listEl.innerHTML = '';
-
+      if (!listEl) return;
+      listEl.innerHTML = '';
       if (!list.length) {
-        if (listEl) listEl.innerHTML = '<div class="map_empty">No villas in this area yet.</div>';
-        if (countEl) countEl.textContent = 'No villas found';
+        listEl.innerHTML = '<div class="map_empty">No villas in this area yet.</div>';
         return;
       }
-
-      var bounds = new maplibregl.LngLatBounds();
-      var placed = spread(list);
-
-      placed.forEach(function (row) {
-        var p = row.p;
-
-        // --- left card ---
+      list.forEach(function (p) {
         var card = document.createElement('a');
         card.className = 'map_card';
         card.href = p.url;
@@ -229,11 +210,45 @@
         card.setAttribute('data-coords', p.lat + ',' + p.lng);
         card.setAttribute('data-price', String(p.price));
         card.setAttribute('data-name', p.name);
-        card.innerHTML = cardHTML(p);
-        if (listEl) listEl.appendChild(card);
+        card.innerHTML = cardInnerHTML(p);
+        listEl.appendChild(card);
         cards[p.slug] = card;
 
-        // --- marker (price pill) ---
+        card.addEventListener('mouseenter', function () {
+          setActive(p.slug);
+        });
+        card.addEventListener('click', function (e) {
+          // With the map up, focus it (StayVista behaviour); the popup's
+          // "View villa" is the path to the property page. Without the map,
+          // fall through to the card's own link so the page still works.
+          if (!mapReady || !markers[p.slug]) return;
+          e.preventDefault();
+          setActive(p.slug);
+          var mk = markers[p.slug];
+          var at = mk.getLngLat();
+          map.flyTo({ center: at, zoom: Math.max(map.getZoom(), 12), speed: 0.8 });
+          if (!mk.getPopup().isOpen()) mk.togglePopup();
+        });
+      });
+    }
+
+    /* --- markers (needs a loaded map) --- */
+    function clearMarkers() {
+      Object.keys(markers).forEach(function (k) {
+        markers[k].remove();
+      });
+      markers = {};
+    }
+
+    function plotMarkers(list) {
+      if (!map || !mapReady) return;
+      clearMarkers();
+      if (!list.length) return;
+      var pos = spread(list);
+      var bounds = new maplibregl.LngLatBounds();
+      list.forEach(function (p) {
+        var at = pos[p.slug] || { lat: p.lat, lng: p.lng };
+
         var el = document.createElement('div');
         el.className = 'viraalay-marker';
         el.textContent = '₹' + inr(p.price);
@@ -243,40 +258,28 @@
         );
 
         var mk = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-          .setLngLat([row.lng, row.lat])
+          .setLngLat([at.lng, at.lat])
           .setPopup(popup)
           .addTo(map);
         markers[p.slug] = mk;
 
-        // marker click -> highlight + scroll the matching card into view
         el.addEventListener('click', function () {
           setActive(p.slug);
-          if (card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          var card = cards[p.slug];
+          if (card && card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
 
-        // card hover -> highlight the marker; card click -> pan + open popup
-        card.addEventListener('mouseenter', function () {
-          setActive(p.slug);
-        });
-        card.addEventListener('click', function (e) {
-          e.preventDefault();
-          setActive(p.slug);
-          map.flyTo({ center: [row.lng, row.lat], zoom: Math.max(map.getZoom(), 12), speed: 0.8 });
-          if (!mk.getPopup().isOpen()) mk.togglePopup();
-        });
-
-        bounds.extend([row.lng, row.lat]);
+        bounds.extend([at.lng, at.lat]);
       });
-
       try {
         map.fitBounds(bounds, { padding: CFG.fitPadding || 60, maxZoom: CFG.maxZoom || 13, duration: 500 });
       } catch (e) {
-        /* single point or empty — leave the current view */
+        /* single point — keep current view */
       }
     }
 
+    /* --- filter drives both list and markers --- */
     function applyFilter(city) {
-      currentFilter = city;
       filterBtns.forEach(function (b) {
         b.classList.toggle('is-active', (b.getAttribute('data-map-filter') || '') === city);
       });
@@ -286,13 +289,15 @@
           : all.filter(function (p) {
               return (p.city || '').toLowerCase() === city.toLowerCase();
             });
+      currentList = list;
       if (countEl) {
         countEl.textContent =
           city === 'all'
             ? 'Showing ' + list.length + ' ' + (list.length === 1 ? 'villa' : 'villas')
             : list.length + ' ' + (list.length === 1 ? 'villa' : 'villas') + ' in ' + city;
       }
-      render(list);
+      renderList(list);
+      plotMarkers(list);
     }
 
     filterBtns.forEach(function (b) {
@@ -310,22 +315,37 @@
         e.preventDefault();
         var mapView = comp.classList.toggle('is-map-view');
         toggle.textContent = mapView ? 'List' : 'Map';
-        setTimeout(function () {
-          map.resize();
-        }, 260);
+        if (map) {
+          setTimeout(function () {
+            map.resize();
+          }, 260);
+        }
       });
     }
 
-    map.on('load', function () {
-      applyFilter('all');
-      // The canvas can be laid out (or unhidden on mobile) after init; make sure
-      // the map fills it.
-      setTimeout(function () {
-        map.resize();
-      }, 150);
-    });
-    window.addEventListener('resize', function () {
-      map.resize();
+    // Render the list straight away — it does not wait for tiles.
+    applyFilter('all');
+
+    // Bring up the map; markers plot on load.
+    withMapLibre(function () {
+      map = new maplibregl.Map({
+        container: 'map',
+        style: styleUrl(),
+        center: [74.0, 25.4],
+        zoom: 5,
+        attributionControl: true,
+      });
+      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+      map.on('load', function () {
+        mapReady = true;
+        plotMarkers(currentList);
+        setTimeout(function () {
+          map.resize();
+        }, 150);
+      });
+      window.addEventListener('resize', function () {
+        if (map) map.resize();
+      });
     });
   }
 
@@ -340,38 +360,41 @@
       l.setAttribute('data-viraalay-maplibre', '1');
       document.head.appendChild(l);
     }
+    var existing = document.querySelector('script[data-viraalay-maplibre]');
+    if (existing) {
+      existing.addEventListener('load', cb);
+      return;
+    }
     var s = document.createElement('script');
     s.src = MAPLIBRE_JS;
+    s.setAttribute('data-viraalay-maplibre', '1');
     s.onload = cb;
     s.onerror = function () {
-      console.error('[viraalaymap] failed to load MapLibre GL JS');
+      console.error('[viraalaymap] failed to load MapLibre GL JS — list still works');
     };
     document.head.appendChild(s);
   }
 
   function start() {
+    injectCSS();
+    var countEl = document.querySelector('[data-map-count]');
     fetch(API + '/api/properties-geo', { credentials: 'omit' })
       .then(function (r) {
         return r.json();
       })
       .then(function (data) {
-        var props = (data && data.properties) || [];
-        // Degrade gracefully: skip anything without a finite coordinate.
-        props = props.filter(function (p) {
+        var props = ((data && data.properties) || []).filter(function (p) {
+          // Degrade gracefully: skip anything without a finite coordinate.
           return isFinite(Number(p.lat)) && isFinite(Number(p.lng));
         });
         if (!props.length) {
-          var countEl = document.querySelector('[data-map-count]');
           if (countEl) countEl.textContent = 'Map data is unavailable right now.';
           return;
         }
-        withMapLibre(function () {
-          boot(props);
-        });
+        app(props);
       })
       .catch(function (err) {
         console.error('[viraalaymap] could not load properties-geo:', err);
-        var countEl = document.querySelector('[data-map-count]');
         if (countEl) countEl.textContent = 'Map data is unavailable right now.';
       });
   }
