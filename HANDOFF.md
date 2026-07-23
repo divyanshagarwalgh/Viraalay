@@ -332,6 +332,19 @@ booking script for five minutes, so a just-deployed fix will not appear on a
 reload inside that window — check `performance.getEntriesByType('resource')`
 for `transferSize: 0` before concluding a fix did not work.
 
+**A reverse-hash mismatch is NOT evidence that a payment failed.** It says the
+browser-posted form cannot be attributed to PayU — nothing about whether money
+moved. It used to mark the booking failed and tell the guest "no charge has been
+made", which nobody had established. A bad hash now downgrades the response to
+*unattributed*: the declared status is ignored, and the authoritative
+server-to-server `verify_payment` decides, since that asks PayU over a channel
+the browser cannot touch. A forged POST still cannot confirm a booking (verified
+live) and, with a failing verification, is not written to the booking at all.
+**A live payment on 2026-07-23 hit this** (`reason=invalid_signature`); the
+mismatch's cause is still unidentified, and the callback now logs the field
+names, status and whether `additionalCharges` is present so the next one pins
+down which hash variant this merchant account signs with.
+
 **CORS MUST NOT THROW ON AN UNKNOWN ORIGIN.** PayU returns the guest by posting
 a form from `secure.payu.in`, which carries an `Origin` header like any other
 cross-site POST. The origin callback used to `callback(new Error(...))`, which
