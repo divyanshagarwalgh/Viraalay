@@ -491,6 +491,25 @@
       this.staticDivider = next && /divider/i.test(next.className || '') ? next : null;
     },
 
+    /**
+     * The quote panel is hidden in the Designer so it never duplicates the CMS
+     * price card while the engine is idle. That also hid every failure message
+     * written into it: when pricing broke, the guest saw the stale CMS card —
+     * a price for a different number of nights — with no sign anything was
+     * wrong, and a Book Now leading to a checkout that could not price either.
+     * Anything the guest needs to read has to force the panel visible.
+     */
+    showPanelWithoutPrice: function () {
+      if (!this.panel) return;
+      // Only ever called when there is no quote, so any line items still on
+      // screen are from a previous stay and must not be shown beside the
+      // message explaining that this one could not be priced.
+      $$('[data-vbk-row="generated"]', this.rows || this.panel).forEach(function (row) {
+        row.remove();
+      });
+      this.panel.style.display = 'block';
+    },
+
     /** Live quote wins: hide the stale card and take its place in the column. */
     hideStaticPrice: function () {
       if (!this.staticPrice || this.staticSwapped) return;
@@ -534,6 +553,7 @@
         text(this.totalEl, '');
         if (this.reserveEl) this.reserveEl.setAttribute('data-vbk-state', 'min-nights');
         this.restoreStaticPrice();
+        this.showPanelWithoutPrice();
         return;
       }
 
@@ -582,6 +602,7 @@
           );
           if (self.reserveEl) self.reserveEl.setAttribute('data-vbk-state', 'error');
           self.restoreStaticPrice();
+          self.showPanelWithoutPrice();
         });
     },
 
@@ -701,6 +722,7 @@
           var payable = quote.captureMode === 'part' ? quote.payableNow : quote.total;
           text($('#vbk_total'), money(payable, quote.currency));
           hide($('#vbk_alert'));
+          self.setPayEnabled(true);
 
           // Show the policy Guesty will actually apply to this booking.
           var policy = policyText(quote.cancellationPolicy);
@@ -710,13 +732,32 @@
           if (quote.checkOutTime) text($('#vbk_cot'), 'Until ' + quote.checkOutTime);
         })
         .catch(function (err) {
+          self.quote = null;
           text($('#vbk_total'), '--');
           self.error(
             err.code === 'no_rate_plan'
               ? 'These dates are no longer available. Please choose different dates.'
               : 'We could not price this stay. Please go back and try again.'
           );
+          // Without a quote there is nothing to charge, so pay() refuses anyway.
+          // Leaving the button looking live invites a guest to press it and be
+          // told to "wait for pricing" for something that is not still loading.
+          self.setPayEnabled(false, 'Pricing unavailable');
         });
+    },
+
+    /**
+     * Reflects "there is a price" in the pay button. Never enables payment on
+     * its own — pay() re-checks this.quote before it will POST anything.
+     */
+    setPayEnabled: function (enabled, labelWhenDisabled) {
+      var button = $('#vbk_pay');
+      if (!button) return;
+      if (this.payLabel == null) this.payLabel = button.textContent;
+      button.textContent = enabled ? this.payLabel : labelWhenDisabled || this.payLabel;
+      button.setAttribute('data-vbk-state', enabled ? 'ready' : 'unpriced');
+      button.style.opacity = enabled ? '' : '0.45';
+      button.style.pointerEvents = enabled ? '' : 'none';
     },
 
     error: function (message) {
@@ -757,7 +798,12 @@
       hide($('#vbk_err'));
       var problem = this.validate();
       if (problem) return this.error(problem);
-      if (!this.quote) return this.error('Please wait for pricing to finish loading.');
+      if (!this.quote) {
+        return this.error(
+          'We do not have a price for this stay yet, so there is nothing to charge. ' +
+            'Please go back and reselect your dates.'
+        );
+      }
 
       if (button) {
         button.setAttribute('data-vbk-busy', 'true');
