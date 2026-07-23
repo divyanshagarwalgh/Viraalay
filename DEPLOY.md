@@ -100,42 +100,55 @@ railway login
 
 This opens your browser. Approve, then return to PowerShell.
 
-### 2b. Stop the upload from including secrets
+### 2b. Push the code to GitHub
 
-`railway up` uploads the whole folder. Create a `.railwayignore` so your
-credentials and local caches stay on your machine:
+Railway builds **whatever is in the connected repo**. A repo containing only an
+auto-generated `README.md` fails with:
 
-```bash
-@"
-.env
-.env.*
-backups/
-node_modules/
-viraalay-token-*.json
-*.pem
-*.key
-"@ | Out-File -FilePath .railwayignore -Encoding utf8
+```
+✖ Railpack could not determine how to build the app.
+  The app contents that Railpack analyzed contains:
+  ./
+  └── README.md
 ```
 
-> Credentials go in Railway's dashboard instead (Part 3). Even if `.env` were
-> uploaded it would not override the dashboard — `dotenv` never overwrites a
-> variable the host has already set — but keeping secrets off the host entirely
-> is the right habit.
+That means the code was never pushed — Railpack found no `package.json`, so it
+could not tell this was a Node app. It is not a Railway or config problem.
 
-### 2c. Create the project and deploy
+This folder was made a git repo and committed on 2026-07-23. To push it:
 
 ```bash
-railway init
+cd "D:\Claude desktop\viraalay-booking-engine"
 ```
-
-Give it a name when prompted, e.g. `viraalay-booking-engine`.
 
 ```bash
-railway up
+git remote add origin https://github.com/YOUR-USERNAME/YOUR-REPO.git
 ```
 
-Wait for the build. The first deploy **will fail to boot** because no
-environment variables are set yet. That is expected — fix it in Part 3.
+```bash
+git push -u --force origin main
+```
+
+`--force` is needed only on this very first push, because GitHub created a stub
+`README.md` in the empty repo and this project has its own. It overwrites that
+throwaway stub. **Use it only for this initial push** — never on a repo with
+real history.
+
+> **Secrets:** `.gitignore` already excludes `.env`, `backups/`, `node_modules/`
+> and the token cache, and the commit was verified to contain none of them —
+> 34 files, no credentials. Run `npm run scan-secrets` any time to re-check.
+> Credentials go in Railway's dashboard instead (Part 3).
+
+> `.railwayignore` is not needed on this path. With a GitHub-connected service
+> Railway builds from the repo, so `.gitignore` is what protects you.
+
+### 2c. Connect the repo
+
+In Railway: **New Project → Deploy from GitHub repo** → pick your repo. It
+builds automatically, and redeploys on every push to `main` from then on.
+
+The build will now succeed, but the service **will still fail to boot** because
+no environment variables are set yet. That is expected — fix it in Part 3.
 
 ---
 
@@ -420,6 +433,8 @@ and re-run `npm run register-webhooks` if you changed a webhook token.
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| `Railpack could not determine how to build the app`, tree shows only `README.md` | code never pushed; repo has just the stub README | Part 2b |
+| Build succeeds but service crashes on boot | env vars not set | Part 3 |
 | Book Now does nothing, no network calls | `apiBase` still empty, or site not republished | Part 5 |
 | Book Now does nothing, console shows CORS error | site origin missing from `ALLOWED_ORIGINS` | add it in Railway, redeploy |
 | "Please choose your check-in and check-out dates first." | no dates selected — working as designed | pick dates in the search widget |

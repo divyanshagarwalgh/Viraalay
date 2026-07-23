@@ -377,7 +377,16 @@ router.get('/config', (req, res) => {
     successPath: config.successPath,
     failurePath: config.failurePath,
     payuMode: config.payu.mode,
-    ready: Boolean(config.payu.key && config.guesty.bookingEngine.clientId),
+    // Readiness must follow GUESTY_API_MODE. This account has no Booking
+    // Engine add-on, so bookingEngine.clientId is intentionally empty and
+    // checking it reported a correctly-configured open-api install as
+    // not-ready. Nothing consumes this flag yet — fixed before something does.
+    ready: Boolean(
+      config.payu.key &&
+        (config.guesty.mode === 'open-api'
+          ? config.guesty.openApi.clientId
+          : config.guesty.bookingEngine.clientId)
+    ),
   });
 });
 
