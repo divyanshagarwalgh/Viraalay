@@ -332,6 +332,27 @@ booking script for five minutes, so a just-deployed fix will not appear on a
 reload inside that window — check `performance.getEntriesByType('resource')`
 for `transferSize: 0` before concluding a fix did not work.
 
+**CORS MUST NOT THROW ON AN UNKNOWN ORIGIN.** PayU returns the guest by posting
+a form from `secure.payu.in`, which carries an `Origin` header like any other
+cross-site POST. The origin callback used to `callback(new Error(...))`, which
+turned that return into a **500 before the route ran** — so on 2026-07-23 a real
+payment was taken, never verified, no reservation created, and the guest was
+shown "Something went wrong on our side". Every payment would have done this.
+Refuse the *headers* (`callback(null, false)`) instead: withholding them is the
+actual protection, since a browser then refuses to hand a scripted cross-origin
+response to a page that was not granted access, while form posts and navigations
+— which CORS does not govern — proceed. Reproduce with:
+`curl -X POST <base>/api/payu/callback -H "Origin: https://secure.payu.in" -d "status=success&txnid=X&udf1=Y"`
+— a 303 is correct, a 500 is the bug.
+
+**`readSelection()` reads the WIDGET first, the URL second.** It was the other
+way round, and a property page is always reached with `?checkin=…`, so the URL
+always matched and the picker was never consulted: changing dates updated the
+display while the price stayed on the old dates until someone edited the address
+bar. The URL is a seed and the fallback for pages with no picker (checkout,
+listings). Guests are recovered as `shownTotal - urlChildren`, because the
+picker only ever displays a combined head count.
+
 **Ratings mapping** — Airbnb has no *meals* category, so Meals rating mirrors
 the overall score rather than inventing a number. clean ← cleanliness,
 staff ← communication + checkin, experience ← accuracy + value.
