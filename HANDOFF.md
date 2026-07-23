@@ -397,6 +397,30 @@ without a quote, but it used to claim pricing was "still loading".
 3. **Raise the `/properties` Collection List item limit.** It is 15, so 1 of 16
    properties (`The Brindha Villa`) never renders.
 
+### B2. What runs unattended, and what does not
+
+**Automatic, no human needed:**
+- Guesty OAuth token — one fetch a day, cached on the `/data` volume so deploys
+  and restarts reuse it instead of spending quota.
+- Guesty → Webflow sync every 6h in-process, **and it now publishes**, so the
+  live site actually changes.
+- Webhooks push listing, calendar and reservation changes through immediately.
+- Webflow 429s back off and retry.
+- Container auto-restarts on crash (`restartPolicyType: ALWAYS`, set 2026-07-23)
+  and never sleeps.
+
+**Still needs a human:**
+- **Billing.** Railway Hobby, $5/month included credit, overage on the card. A
+  failed card or exhausted credit stops the service. Nothing warns you.
+- **No monitoring or alerting anywhere.** If Guesty changes an API, or a token
+  fetch fails, pricing degrades silently — the 2026-07-23 outage was only caught
+  because somebody happened to look at the site.
+- **New Guesty listings arrive as Webflow drafts** and stay off the site until a
+  human publishes them. Deliberate (review before publish), but it *is* manual.
+- **Refunds** — issue in the PayU dashboard and update the booking by hand.
+- **Code changes need a manual deploy** — auto-deploy from GitHub is off.
+- Guest PII accumulates in the Bookings collection with no retention policy.
+
 ### C. Housekeeping
 
 - **Rotate all four credentials** (chat-transmitted). PayU salt first.
