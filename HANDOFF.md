@@ -356,6 +356,14 @@ that check never runs for them. **Any listener that needs to see calendar clicks
 must therefore use the capture phase** — that is why the auto-advance listener
 does.
 
+**Never read an element the page WRITES to.** `#vbk_ci` / `#vbk_co` are the
+checkout page's own display, filled by `CheckoutPage.render`. Adding them to
+`readSelection`'s picker list made checkout read the element it was about to
+fill, find the "Select date" placeholder, and refuse every booking with "We
+could not load your booking". Only `#bk_*` (booking sidebar), `#vm_*` (mobile
+modal) and `#vh_*` (hero) are inputs, and none of them exist on `/checkout`, so
+it falls through to the URL — which is where checkout has always got its dates.
+
 **A picker showing "Select date" is an ANSWER, not a missing value.** Choosing a
 new check-in clears the check-out on purpose. Falling back to the URL there
 resurrected the old check-out, so one click looked like a complete stay: wrong
