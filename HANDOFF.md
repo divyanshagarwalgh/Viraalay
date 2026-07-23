@@ -278,6 +278,33 @@ so the original registration script had never worked. `reservation.new` /
 payloads carry the event name in `eventType` and nest the reservation somewhere
 other than `body.reservation`, so `src/routes/hooks.js` probes several shapes.
 
+**The date picker's day cells carry no date.** It renders each day as a bare
+`<button class="vla-d">12</button>`, so the availability painting — which keys
+off `[data-date]` — had never marked anything: 61 cells on screen, 11 blocked
+dates known, zero marked. `stampCalendarDates()` recovers the date from each
+`.vla-mo` block's "Aug 2026" heading plus the cell order and stamps `data-date`.
+Blocked cells deliberately keep `pointer-events` so their `title` tooltip shows;
+clicks are swallowed by a **capture-phase** listener instead, because the picker
+binds its own `onclick` and would otherwise take the date first.
+
+**The /properties list is rendered by Finsweet, not by Webflow.** A pass at boot
+finds zero cards, and Finsweet rebuilds the list on every filter, sort and page
+change, discarding anything written into a card. `ListingPage` watches the list
+and re-applies, caching the `/api/search` result per date range.
+
+**The card price field is not a nightly rate.** Cards render the CMS `price`
+field under a "Per Night" label, but The Royal Crown carries `18016` there
+against a live rate of `5500` a night — roughly threefold overstated. Live rates
+now overwrite it from the calendar `/api/search` already fetches. Write a **bare
+number**: the rupee sign is a sibling element, and the field carries
+`fs-list-fieldtype="number"` for Finsweet's price sort and range filters, so a
+formatted string renders "₹ ₹5,500" and breaks both.
+
+**`/assets` is served with `Cache-Control: max-age=300`.** Browsers hold the
+booking script for five minutes, so a just-deployed fix will not appear on a
+reload inside that window — check `performance.getEntriesByType('resource')`
+for `transferSize: 0` before concluding a fix did not work.
+
 **Ratings mapping** — Airbnb has no *meals* category, so Meals rating mirrors
 the overall score rather than inventing a number. clean ← cleanliness,
 staff ← communication + checkin, experience ← accuracy + value.
