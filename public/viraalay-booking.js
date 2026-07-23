@@ -601,7 +601,11 @@
               : 'We could not price these dates just now. Please try again.'
           );
           if (self.reserveEl) self.reserveEl.setAttribute('data-vbk-state', 'error');
-          self.restoreStaticPrice();
+          // This branch is only reachable with valid dates chosen, and the CMS
+          // card is a fixed figure for a fixed two nights — leaving it up next
+          // to a failure message quotes the guest a price for a stay they did
+          // not ask for. No price is the honest answer here.
+          self.hideStaticPrice();
           self.showPanelWithoutPrice();
         });
     },
