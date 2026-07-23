@@ -433,8 +433,50 @@
      * widget renders day cells with a data-date attribute; anything matching is
      * disabled. Runs again whenever the calendar re-renders.
      */
+    /**
+     * The date picker lives in the site's head script and renders each day as a
+     * bare `<button class="vla-d">12</button>` — no date on it anywhere, which
+     * is why availability had nothing to attach to and blocked dates were never
+     * marked at all.
+     *
+     * The date is recoverable: each `.vla-mo` block heads its grid with a
+     * "Aug 2026" title, and the non-empty cells inside run 1..n in order. Stamp
+     * `data-date` on them so everything downstream can stay generic. Done here
+     * rather than in the head block because that block is one 19KB literal
+     * holding the entire search widget, and a bad edit there takes search down
+     * site-wide. If the picker is ever changed to emit `data-date` itself, this
+     * becomes a no-op and can be deleted.
+     */
+    stampCalendarDates: function () {
+      var MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+      $$('.vla-mo').forEach(function (month) {
+        var head = month.querySelector('.vla-mohd');
+        var grid = month.querySelector('.vla-grid');
+        if (!head || !grid) return;
+
+        // Heading also holds the ‹ › arrows, so pull the month and year out.
+        var m = (head.textContent || '').match(/([A-Za-z]{3})[a-z]*\s+(\d{4})/);
+        if (!m) return;
+        var monthIndex = MONTHS.indexOf(m[1].toLowerCase());
+        var year = Number(m[2]);
+        if (monthIndex < 0 || !year) return;
+
+        var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+
+        $$('.vla-d', grid).forEach(function (cell) {
+          if (/\bemp\b/.test(cell.className)) return;
+          var day = parseInt(cell.textContent, 10);
+          if (!day) return;
+          var iso = year + '-' + pad(monthIndex + 1) + '-' + pad(day);
+          if (cell.getAttribute('data-date') !== iso) cell.setAttribute('data-date', iso);
+        });
+      });
+    },
+
     paintCalendar: function () {
       if (!this.availability) return;
+      this.stampCalendarDates();
 
       var blocked = {};
       (this.availability.blocked || []).forEach(function (d) { blocked[d] = true; });
