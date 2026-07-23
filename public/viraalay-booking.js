@@ -364,6 +364,7 @@
       this.perNightEl = $('[data-vbk-pernight]');
 
       this.findStaticPrice();
+      this.blockUnavailableClicks();
 
       this.loadAvailability(id);
       this.watch();
@@ -399,6 +400,16 @@
           self.goToCheckout();
         });
       });
+
+      // Two CTAs doing the same thing: the site's own "Book Now" and the
+      // "Reserve now" inside the quote panel. Reserve now only exists as a
+      // fallback for a template with no Book Now of its own, so when the real
+      // one is present and wired, stand down. The site's button is the branded
+      // one and sits with Call us / WhatsApp, so it is the one to keep.
+      if (booked.length && this.reserveEl) {
+        this.reserveEl.style.display = 'none';
+        this.reserveEl.setAttribute('data-vbk-superseded', 'true');
+      }
     },
 
     loadAvailability: function (id) {
@@ -424,21 +435,76 @@
      */
     paintCalendar: function () {
       if (!this.availability) return;
+
       var blocked = {};
       (this.availability.blocked || []).forEach(function (d) { blocked[d] = true; });
+      // Dates that are free but cannot be the FIRST night — Guesty's closed-to-
+      // arrival flag. Bookable as part of a longer stay, so they are marked
+      // differently rather than struck through.
+      var noCheckIn = {};
+      (this.availability.noCheckIn || []).forEach(function (d) { noCheckIn[d] = true; });
 
       $$('[data-date]').forEach(function (cell) {
         var d = cell.getAttribute('data-date');
         if (!d) return;
+
         if (blocked[d]) {
           cell.setAttribute('data-vbk-blocked', 'true');
+          cell.setAttribute('aria-disabled', 'true');
+          // `title` is the tooltip. Note the cell must stay hit-testable for the
+          // browser to show it, so clicks are swallowed by the capture-phase
+          // handler below rather than by pointer-events:none.
+          cell.setAttribute('title', 'Not available — already booked for this date');
           cell.style.opacity = '0.32';
           cell.style.textDecoration = 'line-through';
-          cell.style.pointerEvents = 'none';
-        } else {
+          cell.style.cursor = 'not-allowed';
+          cell.style.pointerEvents = '';
+        } else if (noCheckIn[d]) {
+          cell.setAttribute('data-vbk-nocheckin', 'true');
           cell.removeAttribute('data-vbk-blocked');
+          cell.removeAttribute('aria-disabled');
+          cell.setAttribute('title', 'No check-in on this date — it can still fall inside a longer stay');
+          cell.style.opacity = '0.6';
+          cell.style.textDecoration = '';
+          cell.style.cursor = 'not-allowed';
+          cell.style.pointerEvents = '';
+        } else {
+          // Calendars reuse their cells when the month changes, so everything
+          // set above has to be cleared or a free date inherits a struck-out,
+          // unclickable cell from whatever date used to sit in that slot.
+          cell.removeAttribute('data-vbk-blocked');
+          cell.removeAttribute('data-vbk-nocheckin');
+          cell.removeAttribute('aria-disabled');
+          cell.removeAttribute('title');
+          cell.style.opacity = '';
+          cell.style.textDecoration = '';
+          cell.style.cursor = '';
+          cell.style.pointerEvents = '';
         }
       });
+    },
+
+    /**
+     * Blocked days stay hit-testable so their tooltip appears, so the click has
+     * to be stopped here instead. Capture phase, because the date picker lives
+     * in the site's own head script and binds its own listeners — by the bubble
+     * phase it has already taken the date.
+     */
+    blockUnavailableClicks: function () {
+      if (this.clickGuardBound) return;
+      this.clickGuardBound = true;
+
+      document.addEventListener(
+        'click',
+        function (e) {
+          var cell = e.target.closest && e.target.closest('[data-vbk-blocked="true"], [data-vbk-nocheckin="true"]');
+          if (!cell) return;
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+        },
+        true
+      );
     },
 
     /** Poll for changes made by the separately-owned date picker widget. */
@@ -944,6 +1010,39 @@
 
   /* ------------------------------------------------------- listing page */
 
+  /**
+   * Rewrites a listing card's price to the live rate for the chosen dates.
+   *
+   * The card renders the CMS `price` field under a "Per Night" label, but that
+   * field is not a nightly rate — The Royal Crown carries 18016 there while its
+   * live rate is 5500 a night, so the card overstates the price roughly
+   * threefold. Guesty's calendar is the only thing that knows what these dates
+   * actually cost.
+   *
+   * These are base rates, before tax. The card's own label already says
+   * "+ Taxes"; where it does not, the label is corrected too, because a figure
+   * that quietly changes meaning is worse than the stale one it replaced.
+   */
+  function priceCard(card, result) {
+    if (!card || !result || !result.nightlyFrom) return;
+
+    var el = card.querySelector('[fs-list-field="price"], [data-vbk-card-price]');
+    if (!el) return;
+
+    // Keep the original around so a later re-render can put it back, and so
+    // this never doubles up if Finsweet re-runs the list.
+    if (!el.hasAttribute('data-vbk-price-original')) {
+      el.setAttribute('data-vbk-price-original', el.textContent || '');
+    }
+    el.textContent = money(result.nightlyAvg || result.nightlyFrom, result.currency);
+    el.setAttribute('data-vbk-priced', 'live');
+
+    // "Per Night + Taxes" is now true. If the card says something else, say what
+    // the number really is rather than leaving a mislabelled figure.
+    var label = card.querySelector('[data-vbk-card-price-label]');
+    if (label) label.textContent = 'per night + taxes';
+  }
+
   var ListingPage = {
     init: function () {
       var sel = readSelection();
@@ -999,6 +1098,7 @@
               hidden += 1;
             } else {
               card.removeAttribute('data-vbk-unavailable');
+              priceCard(card, r);
             }
           });
           var counter = $('[data-vbk-availability-note]');

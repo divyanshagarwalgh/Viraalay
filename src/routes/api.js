@@ -295,16 +295,41 @@ router.post(
           const days = await guesty.getCalendar(id, checkIn, addDays(checkOut, -1));
           const unavailable = days.find((d) => !guesty.isDayAvailable(d));
           const minNights = Math.max(1, ...days.map((d) => Number(d.minNights) || 1));
+
+          // The calendar already carries a price per night, so listing cards can
+          // show the real rate for the chosen dates without a quote per card —
+          // sixteen quote calls would be far heavier and Guesty rate-limits.
+          // These are BASE rates: no taxes, no fees. Anything rendered from them
+          // has to say so. The tax-inclusive figure comes from /api/quote on the
+          // property page.
+          const nightly = days
+            .map((d) => Number(d.price))
+            .filter((n) => Number.isFinite(n) && n > 0);
+          const subtotal = nightly.reduce((sum, n) => sum + n, 0);
+
           return {
             listingId: id,
             available: !unavailable && nights >= minNights,
             minNights,
             reason: unavailable ? 'blocked' : nights < minNights ? 'min_nights' : null,
+            nightlyFrom: nightly.length ? Math.min(...nightly) : null,
+            nightlyAvg: nightly.length ? Math.round(subtotal / nightly.length) : null,
+            subtotal: nightly.length === days.length && nightly.length ? subtotal : null,
+            currency: days.find((d) => d.currency)?.currency || 'INR',
           };
         } catch (err) {
           // A calendar failure must not hide an otherwise valid property.
           console.warn(`[search] calendar failed for ${id}: ${err.message}`);
-          return { listingId: id, available: true, minNights: 1, reason: 'unknown' };
+          return {
+            listingId: id,
+            available: true,
+            minNights: 1,
+            reason: 'unknown',
+            nightlyFrom: null,
+            nightlyAvg: null,
+            subtotal: null,
+            currency: 'INR',
+          };
         }
       })
     );
