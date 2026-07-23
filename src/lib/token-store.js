@@ -39,13 +39,23 @@ const filePath = (key) => path.join(cacheDir(), `viraalay-token-${key}.json`);
  * instead of asking Guesty for another. Read-only — nothing ever writes back
  * here, so clearing the vars returns to the normal flow.
  */
+const warnedStale = new Set();
+
 function seeded(key) {
   const prefix = `GUESTY_${key.replace(/[^a-z0-9]/gi, '').toUpperCase()}`;
   const accessToken = process.env[`${prefix}_ACCESS_TOKEN`];
   if (!accessToken) return null;
   const expiresAt = Number(process.env[`${prefix}_EXPIRES_AT`] || 0);
   if (!expiresAt || expiresAt <= Date.now()) {
-    console.warn(`[token-store] ${prefix}_ACCESS_TOKEN is set but its expiry is missing or past`);
+    // Once a seed lapses the service goes back to fetching normally, so a stale
+    // variable is harmless and nobody has to remember to remove it. Say so once
+    // per process rather than on every token read.
+    if (!warnedStale.has(prefix)) {
+      warnedStale.add(prefix);
+      console.warn(
+        `[token-store] ${prefix}_ACCESS_TOKEN has expired; fetching tokens normally. The variable can be deleted.`
+      );
+    }
     return null;
   }
   return { accessToken, expiresAt };

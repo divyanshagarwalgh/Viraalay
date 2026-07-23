@@ -28,7 +28,7 @@ const C = () => config.webflow.collections;
  * It is folded into the sync hash so a listing whose Guesty payload has not
  * changed is still rewritten with the new mapping.
  */
-const MAPPING_VERSION = 3;
+const MAPPING_VERSION = 4;
 
 function firstPicture(listing) {
   if (listing.picture?.large) return listing.picture.large;
@@ -294,6 +294,8 @@ async function syncListings({ createMissingProperties = true, onlyListingIds = n
     syncSkipped: 0,
     propertiesCreated: 0,
     propertiesUpdated: 0,
+    propertiesPublished: 0,
+    destinationsPublished: 0,
     destinationsTouched: 0,
     errors: [],
     dryRun,
@@ -331,6 +333,11 @@ async function syncListings({ createMissingProperties = true, onlyListingIds = n
 
   report.listingsSeen = listings.length;
   const destinationMembers = new Map();
+  // Items whose LIVE copy needs refreshing. A Webflow write only touches the
+  // staged copy, so without publishing these the site keeps showing yesterday's
+  // prices however often the sync runs.
+  const toPublish = new Set();
+  const destinationsToPublish = new Set();
 
   for (const listing of listings) {
     try {
@@ -374,6 +381,10 @@ async function syncListings({ createMissingProperties = true, onlyListingIds = n
             };
         await webflow.updateItem(C().properties, propertyItemId, fields);
         report.propertiesUpdated += 1;
+        // Only items already live. A newly created home is deliberately a draft
+        // awaiting review, and publishing it here would put it on the site
+        // before anyone had looked at it.
+        if (!existingProperty?.isDraft) toPublish.add(propertyItemId);
       }
 
       // --- Property Sync (operational) ------------------------------------
@@ -424,10 +435,33 @@ async function syncListings({ createMissingProperties = true, onlyListingIds = n
           ...(prices.length ? { 'starting-price': Math.min(...prices) } : {}),
         });
         report.destinationsTouched += 1;
+        destinationsToPublish.add(destId);
         await sleep(150);
       } catch (err) {
         report.errors.push({ destinationId: destId, error: err.message });
       }
+    }
+  }
+
+  // --- Publish, or none of the above reaches the live site -----------------
+  //
+  // Everything up to here wrote the STAGED copy only. Without this the sync
+  // could run every six hours forever and a guest would still be quoted the
+  // price from whenever somebody last pressed Publish by hand.
+  if (!dryRun) {
+    try {
+      if (toPublish.size) {
+        await webflow.publishItems(C().properties, [...toPublish]);
+        report.propertiesPublished = toPublish.size;
+      }
+      if (destinationsToPublish.size) {
+        await webflow.publishItems(C().locations, [...destinationsToPublish]);
+        report.destinationsPublished = destinationsToPublish.size;
+      }
+    } catch (err) {
+      // The data is written and correct; only the live copy is stale. Report it
+      // rather than failing the whole run — the next sync retries.
+      report.errors.push({ stage: 'publish', error: err.message });
     }
   }
 
