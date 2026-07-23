@@ -410,8 +410,15 @@ without a quote, but it used to claim pricing was "still loading".
   and never sleeps.
 
 - **Monitoring** — `.github/workflows/uptime.yml` checks `/health` and a real
-  Guesty-backed availability call every 15 minutes, and GitHub emails the repo
-  owner when it fails. It runs on **GitHub, not Railway**, on purpose: a monitor
+  Guesty-backed availability call, and GitHub emails the repo owner when it
+  fails. It also runs on every push to `main`, which doubles as a deploy smoke
+  test (verified passing 2026-07-23).
+  **The 15-minute cron is best effort.** GitHub documents scheduled workflows as
+  delayable and droppable under load; this one did not fire at all in its first
+  35 minutes. Treat it as a free safety net, not a guarantee — a quiet hour is
+  not proof the site is up. For a hard guarantee, put a free purpose-built
+  uptime monitor (UptimeRobot and similar have free tiers with 5-minute checks)
+  on `/health` as well; it needs an account, so it cannot be scripted from here. It runs on **GitHub, not Railway**, on purpose: a monitor
   inside the service cannot report that service being down, and a second Railway
   service would eat the Hobby credit. Free — Actions minutes are unlimited on a
   public repo. **GitHub disables scheduled workflows after 60 days with no repo
