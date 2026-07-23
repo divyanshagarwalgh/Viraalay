@@ -343,9 +343,12 @@
       });
     });
 
-    // Mobile List/Map toggle.
+    // Mobile List/Map toggle. It lives inside .map_canvas-wrap, which is
+    // display:none in the mobile List view — a fixed element inside a hidden
+    // subtree does not render, so move it onto <body> where it always shows.
     var toggle = document.querySelector('[data-map-toggle]') || document.querySelector('.map_toggle');
     var comp = document.querySelector('.map_component');
+    if (toggle && document.body) document.body.appendChild(toggle);
     if (toggle && comp) {
       toggle.addEventListener('click', function (e) {
         e.preventDefault();
