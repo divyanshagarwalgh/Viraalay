@@ -114,8 +114,10 @@
       '.map_list .w-dyn-items{display:flex;flex-direction:column;gap:.9rem;width:100%}' +
       '.map_list .w-dyn-item{width:100%}' +
       /* card SELECTED state is JS-driven, so it stays here; the rest of the
-         card look is native Webflow styles, edited in the Designer */
-      '.map_card.is-active{border-color:' + BRAND + ' !important;box-shadow:0 6px 20px rgba(116,38,60,.18) !important}' +
+         card look is native Webflow styles, edited in the Designer. Keyed off
+         the [data-map-card] attribute (not a class) so renaming classes is safe */
+      '[data-map-card].is-active > *{box-shadow:0 0 0 2px ' + BRAND + ' inset !important}' +
+      '.map_card.is-active{box-shadow:0 0 0 2px ' + BRAND + ' inset !important}' +
       /* ---- search-for-a-location field (top-left overlay on the map) ------ */
       '.map_search{position:absolute;top:16px;left:16px;z-index:4;display:flex;align-items:center;gap:9px;width:min(340px,calc(100% - 32px));background:#fff;border-radius:999px;box-shadow:0 3px 14px rgba(0,0,0,.18);padding:11px 16px}' +
       '.map_search svg{flex:0 0 auto}' +
@@ -183,8 +185,10 @@
 
   /* ---- read a native Webflow Collection List ---------------------------- */
 
-  function textOf(el, sel) {
-    var n = el.querySelector(sel);
+  // Read a value by the stable data-map-* hook first, then the original class as
+  // a fallback — so the card classes are free to be renamed in the Designer.
+  function pick(el, attrSel, classSel) {
+    var n = el.querySelector(attrSel) || (classSel ? el.querySelector(classSel) : null);
     return n ? (n.textContent || '').trim() : '';
   }
 
@@ -192,33 +196,33 @@
     return [].slice
       .call(els)
       .map(function (el, i) {
-        var coordsRaw = textOf(el, '.map_card-coords') || el.getAttribute('data-coords') || '';
+        var coordsRaw = pick(el, '[data-map-coords]', '.map_card-coords') || el.getAttribute('data-coords') || '';
         var parts = coordsRaw.split(',');
         var lat = parseFloat(parts[0]);
         var lng = parseFloat(parts[1]);
-        // Build each property URL from the bound slug node — a Collection List
-        // item link to the template page resolves to "/properties", not the
-        // item, so fix the card's own href too.
-        var link = el.matches('a') ? el : el.querySelector('a');
-        var slugText = textOf(el, '.map_card-slug');
+        var slugText = pick(el, '[data-map-slug]', '.map_card-slug');
         var slug = slugText || el.getAttribute('data-slug') || 'p' + i;
+        var link = el.matches('a') ? el : el.querySelector('a');
+        // A Collection item link to the template page resolves to "/properties",
+        // not the item, so build /properties/<slug> and fix the card link too.
         var url = slugText ? '/properties/' + slugText : (link ? link.getAttribute('href') || '#' : '#');
         if (link && slugText) link.setAttribute('href', url);
-        var img = el.querySelector('.map_card-image');
+        var img =
+          el.querySelector('[data-map-image]') || el.querySelector('.map_card-image') || el.querySelector('img');
         return {
           el: el,
           lat: lat,
           lng: lng,
           slug: slug,
           url: url,
-          name: textOf(el, '.map_card-title') || el.getAttribute('data-name') || 'Villa',
-          price: (textOf(el, '.map_card-price') || el.getAttribute('data-price') || '').replace(/[^\d]/g, ''),
-          location: textOf(el, '.map_card-location'),
-          // The visible card meta reads via ::before/::after labels that are not
-          // in textContent, so leave popup meta to fall back to the location.
+          name: pick(el, '[data-map-name]', '.map_card-title') || el.getAttribute('data-name') || 'Villa',
+          price: (pick(el, '[data-map-price]', '.map_card-price') || el.getAttribute('data-price') || '').replace(/[^\d]/g, ''),
+          location: pick(el, '[data-map-location]', '.map_card-location'),
+          // The visible meta uses ::before/::after labels (not in textContent),
+          // so let the popup fall back to the location line.
           meta: '',
           image: img ? img.currentSrc || img.src || img.getAttribute('src') || '' : '',
-          city: textOf(el, '.map_card-location'),
+          city: pick(el, '[data-map-location]', '.map_card-location'),
         };
       })
       .filter(function (p) {
@@ -472,7 +476,10 @@
     injectCSS();
 
     // NATIVE path: a Webflow CMS Collection List already rendered the cards.
-    var nativeEls = document.querySelectorAll('.map_card');
+    // Find them by the stable [data-map-card] hook (fall back to the class), so
+    // the card classes are free to be renamed in the Designer.
+    var nativeEls = document.querySelectorAll('[data-map-card]');
+    if (!nativeEls.length) nativeEls = document.querySelectorAll('.map_card');
     if (nativeEls.length) {
       var props = readNativeCards(nativeEls);
       if (props.length) {
