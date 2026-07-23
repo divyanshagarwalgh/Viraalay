@@ -214,7 +214,9 @@
           name: textOf(el, '.map_card-title') || el.getAttribute('data-name') || 'Villa',
           price: (textOf(el, '.map_card-price') || el.getAttribute('data-price') || '').replace(/[^\d]/g, ''),
           location: textOf(el, '.map_card-location'),
-          meta: textOf(el, '.map_card-meta'),
+          // The visible card meta reads via ::before/::after labels that are not
+          // in textContent, so leave popup meta to fall back to the location.
+          meta: '',
           image: img ? img.currentSrc || img.src || img.getAttribute('src') || '' : '',
           city: textOf(el, '.map_card-location'),
         };
