@@ -345,6 +345,17 @@ response to a page that was not granted access, while form posts and navigations
 `curl -X POST <base>/api/payu/callback -H "Origin: https://secure.payu.in" -d "status=success&txnid=X&udf1=Y"`
 — a 303 is correct, a 500 is the bug.
 
+**The picker closes its own calendar when it re-renders.** Choosing a date or a
+month arrow makes it rebuild the calendar, replacing every node in the popover.
+The click then reaches its document-level "click outside closes the popover"
+check, which tests `pop.contains(e.target)` — false, because the rebuild just
+destroyed that node — so it closes. Symptoms: month arrows shut the calendar,
+and picking a check-in shut it before a check-out could be chosen.
+`SearchFlow.keepCalendarOpen()` stops clicks inside `.vla-cal` at the popover so
+that check never runs for them. **Any listener that needs to see calendar clicks
+must therefore use the capture phase** — that is why the auto-advance listener
+does.
+
 **`readSelection()` reads the WIDGET first, the URL second.** It was the other
 way round, and a property page is always reached with `?checkin=…`, so the URL
 always matched and the picker was never consulted: changing dates updated the
